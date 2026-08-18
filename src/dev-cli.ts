@@ -5,9 +5,11 @@
 import { runTurn } from "./agent/loop.js";
 import { buildSystemPrompt } from "./agent/systemPrompt.js";
 import type { Message } from "./agent/types.js";
-import type { Provider } from "./providers/types.js";
+import { PermissionManager } from "./permissions/manager.js";
 import { AnthropicProvider } from "./providers/anthropic.js";
 import { OllamaProvider } from "./providers/ollama.js";
+import type { Provider } from "./providers/types.js";
+import { ToolRegistry } from "./tools/registry.js";
 
 const prompt = process.argv.slice(2).join(" ");
 if (prompt === "") {
@@ -32,12 +34,20 @@ if (providerName === "anthropic") {
   defaultModel = "qwen3.8-iq4xs";
 }
 
+const cwd = process.cwd();
+// The harness has no UI to prompt with, so it runs unattended.
+const permissions = new PermissionManager("auto-bypass", cwd);
+const tools = new ToolRegistry({ cwd, permissions });
+
 const history: Message[] = [];
 const ctx = {
   provider,
   model: process.env["STAK_MODEL"] ?? defaultModel,
-  systemPrompt: buildSystemPrompt({ cwd: process.cwd() }),
+  systemPrompt: buildSystemPrompt({ cwd }),
   history,
+  tools: tools.definitions(),
+  executeTool: (call: { id: string; name: string; input: unknown }) =>
+    tools.execute(call),
 };
 
 for await (const event of runTurn(ctx, prompt)) {
@@ -49,7 +59,9 @@ for await (const event of runTurn(ctx, prompt)) {
       process.stdout.write(`\n[tool] ${event.name} ${JSON.stringify(event.input)}\n`);
       break;
     case "tool-call-result":
-      process.stdout.write(`[tool result] ${event.output}\n`);
+      process.stdout.write(
+        `[result${event.isError ? " error" : ""}] ${event.output.split("\n").slice(0, 5).join("\n")}\n`,
+      );
       break;
     case "turn-complete":
       process.stdout.write("\n");
