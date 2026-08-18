@@ -9,8 +9,11 @@ import type { DisplayMessage } from "../types.js";
  */
 const FLUSH_INTERVAL_MS = 33;
 
-export function useAgentSession(ctx: AgentContext) {
-  const [messages, setMessages] = useState<DisplayMessage[]>([]);
+export function useAgentSession(
+  ctx: AgentContext,
+  initialMessages: DisplayMessage[] = [],
+) {
+  const [messages, setMessages] = useState<DisplayMessage[]>(initialMessages);
   const [busy, setBusy] = useState(false);
   const pendingText = useRef("");
   const flushTimer = useRef<NodeJS.Timeout | null>(null);

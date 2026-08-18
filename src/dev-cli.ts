@@ -6,6 +6,8 @@ import { runTurn } from "./agent/loop.js";
 import { buildSystemPrompt } from "./agent/systemPrompt.js";
 import type { Message } from "./agent/types.js";
 import { PermissionManager } from "./permissions/manager.js";
+import { findLatestSession, loadSession } from "./sessions/resume.js";
+import { SessionStore } from "./sessions/store.js";
 import { AnthropicProvider } from "./providers/anthropic.js";
 import { OllamaProvider } from "./providers/ollama.js";
 import type { Provider } from "./providers/types.js";
@@ -47,15 +49,30 @@ const tools = new ToolRegistry({
   extra: [createSkillTool(skills) as unknown as AnyTool],
 });
 
-const history: Message[] = [];
+const shouldResume = process.env["STAK_CONTINUE"] === "1";
+const previous = shouldResume ? await findLatestSession(cwd) : undefined;
+const resumed = previous ? await loadSession(previous) : undefined;
+
+const model = process.env["STAK_MODEL"] ?? resumed?.model ?? defaultModel;
+const history: Message[] = resumed?.history ?? [];
+const sessionMeta = { provider: provider.name, model, cwd };
+const store = resumed
+  ? SessionStore.resuming(sessionMeta, resumed)
+  : new SessionStore(sessionMeta);
+
+if (resumed) {
+  process.stdout.write(`[resumed ${resumed.history.length} messages]\n`);
+}
+
 const ctx = {
   provider,
-  model: process.env["STAK_MODEL"] ?? defaultModel,
+  model,
   systemPrompt: buildSystemPrompt({ cwd, skills }),
   history,
   tools: tools.definitions(),
   executeTool: (call: { id: string; name: string; input: unknown }) =>
     tools.execute(call),
+  onMessage: (message: Message) => store.append(message),
 };
 
 for await (const event of runTurn(ctx, prompt)) {
@@ -80,3 +97,5 @@ for await (const event of runTurn(ctx, prompt)) {
       break;
   }
 }
+
+await store.flush();

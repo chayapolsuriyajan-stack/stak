@@ -8,11 +8,14 @@ import { CommandRegistry } from "./commands/dispatch.js";
 import { loadConfig } from "./config/load.js";
 import { PermissionManager } from "./permissions/manager.js";
 import { createProvider } from "./providers/registry.js";
+import { findLatestSession, loadSession } from "./sessions/resume.js";
+import { SessionStore } from "./sessions/store.js";
 import { loadSkills } from "./skills/loader.js";
 import { ToolRegistry } from "./tools/registry.js";
 import { createSkillTool } from "./tools/skillTool.js";
 import type { AnyTool } from "./tools/types.js";
 import { App } from "./tui/App.js";
+import { toDisplayMessages } from "./tui/history.js";
 
 const VERSION = "0.1.0";
 
@@ -53,17 +56,35 @@ const tools = new ToolRegistry({
   extra: [createSkillTool(skills) as unknown as AnyTool],
 });
 
-const history: Message[] = [];
+const resumed = options.continue ? await resumeLatest(cwd) : undefined;
+if (options.continue && !resumed) {
+  console.warn("stak: no previous session found in this directory.");
+}
+
+const history: Message[] = resumed?.history ?? [];
+const model = resumed?.model ?? config.model;
+
+const sessionMeta = { provider: provider.name, model, cwd };
+let store = resumed
+  ? SessionStore.resuming(sessionMeta, resumed)
+  : new SessionStore(sessionMeta);
+
 const ctx: AgentContext = {
   provider,
-  model: config.model,
+  model,
   // The catalog goes in the prompt so the model knows a skill exists before it
   // has any reason to call the tool.
   systemPrompt: buildSystemPrompt({ cwd, skills }),
   history,
   tools: tools.definitions(),
   executeTool: (call) => tools.execute(call),
+  onMessage: (message) => store.append(message),
 };
+
+async function resumeLatest(dir: string) {
+  const file = await findLatestSession(dir);
+  return file ? loadSession(file) : undefined;
+}
 
 const commands = await CommandRegistry.load(cwd);
 
@@ -71,4 +92,15 @@ for (const warning of config.warnings) {
   console.warn(`stak: ${warning}`);
 }
 
-render(React.createElement(App, { ctx, permissions, commands, version: VERSION }));
+render(
+  React.createElement(App, {
+    ctx,
+    permissions,
+    commands,
+    version: VERSION,
+    initialMessages: resumed ? toDisplayMessages(resumed.history) : [],
+    onNewSession: () => {
+      store = new SessionStore({ provider: provider.name, model: ctx.model, cwd });
+    },
+  }),
+);

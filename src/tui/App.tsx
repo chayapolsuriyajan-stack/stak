@@ -12,17 +12,32 @@ import { Splash } from "./components/Splash.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { useAgentSession } from "./hooks/useAgentSession.js";
 import { usePermissionPrompt } from "./hooks/usePermissionPrompt.js";
+import type { DisplayMessage } from "./types.js";
 
 export interface AppProps {
   ctx: AgentContext;
   permissions: PermissionManager;
   commands: CommandRegistry;
   version: string;
+  /** Transcript rebuilt from a resumed session, empty for a new one. */
+  initialMessages?: DisplayMessage[];
+  /** Starts a new session file, used by /clear. */
+  onNewSession?: () => void;
 }
 
-export function App({ ctx, permissions, commands, version }: AppProps) {
+export function App({
+  ctx,
+  permissions,
+  commands,
+  version,
+  initialMessages,
+  onNewSession,
+}: AppProps) {
   const { exit } = useApp();
-  const { messages, busy, sendMessage, append, clear } = useAgentSession(ctx);
+  const { messages, busy, sendMessage, append, clear } = useAgentSession(
+    ctx,
+    initialMessages,
+  );
   const { request, decide } = usePermissionPrompt(permissions);
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<PermissionMode>(permissions.getMode());
@@ -48,7 +63,11 @@ export function App({ ctx, permissions, commands, version }: AppProps) {
 
   const runCommand = async (raw: string) => {
     const outcome = await commands.run(raw, {
-      clear,
+      clear: () => {
+        clear();
+        // A cleared conversation is a new session, not a gap in the old one.
+        onNewSession?.();
+      },
       getPermissionMode: () => permissions.getMode(),
       setPermissionMode: async (next) => {
         await permissions.setMode(next as PermissionMode);
