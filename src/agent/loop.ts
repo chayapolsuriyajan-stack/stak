@@ -20,6 +20,11 @@ export interface AgentContext {
   onMessage?: (message: Message) => void;
 }
 
+export interface RunTurnOptions {
+  /** Aborts the turn between streaming steps when the user interrupts. */
+  signal?: AbortSignal;
+}
+
 /**
  * Runs one user turn to completion, which may span several provider round
  * trips if the model calls tools. Mutates `ctx.history` as it goes so the
@@ -28,10 +33,13 @@ export interface AgentContext {
 export async function* runTurn(
   ctx: AgentContext,
   input: string,
+  options: RunTurnOptions = {},
 ): AsyncGenerator<AgentEvent> {
+  const { signal } = options;
   append(ctx, userText(input));
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+    if (signal?.aborted) return yield interrupted();
     const assistantBlocks: ContentBlock[] = [];
     const toolCalls: { id: string; name: string; input: unknown }[] = [];
     let text = "";
@@ -45,6 +53,10 @@ export async function* runTurn(
     });
 
     for await (const event of stream) {
+      // Stop consuming the stream promptly rather than after the model has
+      // finished producing a response the user no longer wants.
+      if (signal?.aborted) return yield interrupted();
+
       switch (event.type) {
         case "text-delta":
           text += event.text;
@@ -93,6 +105,8 @@ export async function* runTurn(
     const resultBlocks: ContentBlock[] = [];
 
     for (const call of toolCalls) {
+      if (signal?.aborted) return yield interrupted();
+
       yield {
         type: "tool-call-start",
         id: call.id,
@@ -137,4 +151,8 @@ export async function* runTurn(
 function append(ctx: AgentContext, message: Message): void {
   ctx.history.push(message);
   ctx.onMessage?.(message);
+}
+
+function interrupted(): AgentEvent {
+  return { type: "interrupted" };
 }

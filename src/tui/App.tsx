@@ -34,7 +34,7 @@ export function App({
   onNewSession,
 }: AppProps) {
   const { exit } = useApp();
-  const { messages, busy, sendMessage, append, clear } = useAgentSession(
+  const { messages, busy, sendMessage, append, clear, interrupt } = useAgentSession(
     ctx,
     initialMessages,
   );
@@ -56,7 +56,11 @@ export function App({
         });
         return;
       }
-      if (key.escape && !busy) exit();
+      if (key.escape) {
+        // Escape stops work in progress; when there is none, it leaves.
+        if (busy) interrupt();
+        else exit();
+      }
     },
     { isActive: request === null },
   );

@@ -46,6 +46,7 @@ export type AgentEvent =
       isError: boolean;
     }
   | { type: "turn-complete" }
+  | { type: "interrupted" }
   | { type: "error"; error: Error };
 
 /** Convenience constructors — these shapes get built in a lot of places. */

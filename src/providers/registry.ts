@@ -1,6 +1,7 @@
 import type { ResolvedConfig } from "../config/types.js";
 import { AnthropicProvider } from "./anthropic.js";
 import { OllamaProvider } from "./ollama.js";
+import { OpenAIProvider } from "./openai.js";
 import type { Provider } from "./types.js";
 
 /**
@@ -18,8 +19,14 @@ export function createProvider(config: ResolvedConfig): Provider {
       return new AnthropicProvider({ apiKey: config.anthropicApiKey });
     }
 
-    case "openai":
-      throw new Error("The OpenAI provider is not implemented yet.");
+    case "openai": {
+      if (!config.openaiApiKey) {
+        throw new Error(
+          "No OpenAI API key. Set OPENAI_API_KEY or add openaiApiKey to ~/.stak/config.json.",
+        );
+      }
+      return new OpenAIProvider({ apiKey: config.openaiApiKey });
+    }
 
     case "ollama":
       return new OllamaProvider({ host: config.ollamaHost });

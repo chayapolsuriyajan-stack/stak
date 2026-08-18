@@ -91,6 +91,9 @@ for await (const event of runTurn(ctx, prompt)) {
     case "turn-complete":
       process.stdout.write("\n");
       break;
+    case "interrupted":
+      process.stdout.write("\n[interrupted]\n");
+      break;
     case "error":
       process.stderr.write(`\nError: ${event.error.message}\n`);
       process.exitCode = 1;

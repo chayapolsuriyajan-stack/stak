@@ -17,6 +17,7 @@ export function useAgentSession(
   const [busy, setBusy] = useState(false);
   const pendingText = useRef("");
   const flushTimer = useRef<NodeJS.Timeout | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const flush = useCallback(() => {
     const text = pendingText.current;
@@ -70,8 +71,11 @@ export function useAgentSession(
       setBusy(true);
       startFlushing();
 
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       try {
-        for await (const event of runTurn(ctx, input)) {
+        for await (const event of runTurn(ctx, input, { signal: controller.signal })) {
           switch (event.type) {
             case "text-delta":
               pendingText.current += event.text;
@@ -107,17 +111,28 @@ export function useAgentSession(
               startFlushing();
               break;
 
+            case "interrupted":
+              stopFlushing();
+              append({ kind: "notice", text: "Interrupted." });
+              startFlushing();
+              break;
+
             case "turn-complete":
               break;
           }
         }
       } finally {
         stopFlushing();
+        abortRef.current = null;
         setBusy(false);
       }
     },
     [ctx, append, startFlushing, stopFlushing],
   );
 
-  return { messages, busy, sendMessage, append, clear };
+  const interrupt = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
+
+  return { messages, busy, sendMessage, append, clear, interrupt };
 }
