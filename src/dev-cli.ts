@@ -9,7 +9,10 @@ import { PermissionManager } from "./permissions/manager.js";
 import { AnthropicProvider } from "./providers/anthropic.js";
 import { OllamaProvider } from "./providers/ollama.js";
 import type { Provider } from "./providers/types.js";
+import { loadSkills } from "./skills/loader.js";
 import { ToolRegistry } from "./tools/registry.js";
+import { createSkillTool } from "./tools/skillTool.js";
+import type { AnyTool } from "./tools/types.js";
 
 const prompt = process.argv.slice(2).join(" ");
 if (prompt === "") {
@@ -37,13 +40,18 @@ if (providerName === "anthropic") {
 const cwd = process.cwd();
 // The harness has no UI to prompt with, so it runs unattended.
 const permissions = new PermissionManager("auto-bypass", cwd);
-const tools = new ToolRegistry({ cwd, permissions });
+const skills = await loadSkills(cwd);
+const tools = new ToolRegistry({
+  cwd,
+  permissions,
+  extra: [createSkillTool(skills) as unknown as AnyTool],
+});
 
 const history: Message[] = [];
 const ctx = {
   provider,
   model: process.env["STAK_MODEL"] ?? defaultModel,
-  systemPrompt: buildSystemPrompt({ cwd }),
+  systemPrompt: buildSystemPrompt({ cwd, skills }),
   history,
   tools: tools.definitions(),
   executeTool: (call: { id: string; name: string; input: unknown }) =>

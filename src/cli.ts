@@ -8,7 +8,10 @@ import { CommandRegistry } from "./commands/dispatch.js";
 import { loadConfig } from "./config/load.js";
 import { PermissionManager } from "./permissions/manager.js";
 import { createProvider } from "./providers/registry.js";
+import { loadSkills } from "./skills/loader.js";
 import { ToolRegistry } from "./tools/registry.js";
+import { createSkillTool } from "./tools/skillTool.js";
+import type { AnyTool } from "./tools/types.js";
 import { App } from "./tui/App.js";
 
 const VERSION = "0.1.0";
@@ -43,13 +46,20 @@ try {
 
 const cwd = process.cwd();
 const permissions = new PermissionManager(config.permissionMode, cwd);
-const tools = new ToolRegistry({ cwd, permissions });
+const skills = await loadSkills(cwd);
+const tools = new ToolRegistry({
+  cwd,
+  permissions,
+  extra: [createSkillTool(skills) as unknown as AnyTool],
+});
 
 const history: Message[] = [];
 const ctx: AgentContext = {
   provider,
   model: config.model,
-  systemPrompt: buildSystemPrompt({ cwd }),
+  // The catalog goes in the prompt so the model knows a skill exists before it
+  // has any reason to call the tool.
+  systemPrompt: buildSystemPrompt({ cwd, skills }),
   history,
   tools: tools.definitions(),
   executeTool: (call) => tools.execute(call),
