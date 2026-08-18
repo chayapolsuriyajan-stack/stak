@@ -56,6 +56,11 @@ export function useAgentSession(ctx: AgentContext) {
     setMessages((current) => [...current, message]);
   }, []);
 
+  const clear = useCallback(() => {
+    ctx.history.length = 0;
+    setMessages([]);
+  }, [ctx]);
+
   const sendMessage = useCallback(
     async (input: string) => {
       append({ kind: "user", text: input });
@@ -111,5 +116,5 @@ export function useAgentSession(ctx: AgentContext) {
     [ctx, append, startFlushing, stopFlushing],
   );
 
-  return { messages, busy, sendMessage, append };
+  return { messages, busy, sendMessage, append, clear };
 }

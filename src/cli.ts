@@ -4,6 +4,7 @@ import React from "react";
 import type { AgentContext } from "./agent/loop.js";
 import { buildSystemPrompt } from "./agent/systemPrompt.js";
 import type { Message } from "./agent/types.js";
+import { CommandRegistry } from "./commands/dispatch.js";
 import { loadConfig } from "./config/load.js";
 import { PermissionManager } from "./permissions/manager.js";
 import { createProvider } from "./providers/registry.js";
@@ -54,8 +55,10 @@ const ctx: AgentContext = {
   executeTool: (call) => tools.execute(call),
 };
 
+const commands = await CommandRegistry.load(cwd);
+
 for (const warning of config.warnings) {
   console.warn(`stak: ${warning}`);
 }
 
-render(React.createElement(App, { ctx, permissions, version: VERSION }));
+render(React.createElement(App, { ctx, permissions, commands, version: VERSION }));

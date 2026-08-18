@@ -1,6 +1,8 @@
 import { Box, useApp, useInput } from "ink";
 import { useState } from "react";
 import type { AgentContext } from "../agent/loop.js";
+import type { CommandRegistry } from "../commands/dispatch.js";
+import { isCommand } from "../commands/dispatch.js";
 import { MODE_LABELS, type PermissionManager } from "../permissions/manager.js";
 import type { PermissionMode } from "../permissions/types.js";
 import { InputBox } from "./components/InputBox.js";
@@ -14,15 +16,17 @@ import { usePermissionPrompt } from "./hooks/usePermissionPrompt.js";
 export interface AppProps {
   ctx: AgentContext;
   permissions: PermissionManager;
+  commands: CommandRegistry;
   version: string;
 }
 
-export function App({ ctx, permissions, version }: AppProps) {
+export function App({ ctx, permissions, commands, version }: AppProps) {
   const { exit } = useApp();
-  const { messages, busy, sendMessage, append } = useAgentSession(ctx);
+  const { messages, busy, sendMessage, append, clear } = useAgentSession(ctx);
   const { request, decide } = usePermissionPrompt(permissions);
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<PermissionMode>(permissions.getMode());
+  const [model, setModel] = useState(ctx.model);
 
   useInput(
     (_char, key) => {
@@ -30,7 +34,10 @@ export function App({ ctx, permissions, version }: AppProps) {
       if (key.tab && key.shift) {
         void permissions.cycleMode().then((next) => {
           setMode(next);
-          append({ kind: "notice", text: `Permission mode: ${next} — ${MODE_LABELS[next]}` });
+          append({
+            kind: "notice",
+            text: `Permission mode: ${next} — ${MODE_LABELS[next]}`,
+          });
         });
         return;
       }
@@ -39,13 +46,49 @@ export function App({ ctx, permissions, version }: AppProps) {
     { isActive: request === null },
   );
 
+  const runCommand = async (raw: string) => {
+    const outcome = await commands.run(raw, {
+      clear,
+      getPermissionMode: () => permissions.getMode(),
+      setPermissionMode: async (next) => {
+        await permissions.setMode(next as PermissionMode);
+        setMode(permissions.getMode());
+        return permissions.getMode();
+      },
+      setModel: (next) => {
+        // The loop reads ctx.model per request, so mutating it takes effect on
+        // the next turn without rebuilding the session.
+        ctx.model = next;
+        setModel(next);
+      },
+      describeModel: () => `${ctx.provider.name} ${ctx.model}`,
+    });
+
+    switch (outcome.kind) {
+      case "exit":
+        exit();
+        break;
+      case "notice":
+        append({ kind: "notice", text: outcome.text });
+        break;
+      case "error":
+        append({ kind: "error", text: outcome.text });
+        break;
+      case "prompt":
+        await sendMessage(outcome.text);
+        break;
+      case "handled":
+        break;
+    }
+  };
+
   const handleSubmit = (value: string) => {
     const trimmed = value.trim();
     if (trimmed === "" || busy) return;
     setInput("");
 
-    if (trimmed === "/exit" || trimmed === "/quit") {
-      exit();
+    if (isCommand(trimmed)) {
+      void runCommand(trimmed);
       return;
     }
 
@@ -73,7 +116,7 @@ export function App({ ctx, permissions, version }: AppProps) {
 
       <StatusBar
         provider={ctx.provider.name}
-        model={ctx.model}
+        model={model}
         busy={busy}
         hint={`enter send · shift+tab ${mode}`}
       />
