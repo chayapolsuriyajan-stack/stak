@@ -1,12 +1,18 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import matter from "gray-matter";
 import { globalSkillsDir, projectSkillsDir } from "../config/paths.js";
+import { parseFrontmatter } from "../utils/frontmatter.js";
 import type { Skill } from "./types.js";
 
 interface SkillFrontmatter {
   name?: string;
   description?: string;
+}
+
+export interface LoadedSkills {
+  skills: Skill[];
+  /** Why a candidate was rejected, so a skill never fails to load in silence. */
+  warnings: string[];
 }
 
 /**
@@ -21,27 +27,31 @@ export async function loadSkills(
     { path: globalSkillsDir(), source: "global" },
     { path: projectSkillsDir(cwd), source: "project" },
   ],
-): Promise<Skill[]> {
+): Promise<LoadedSkills> {
   const byName = new Map<string, Skill>();
+  const warnings: string[] = [];
 
   for (const dir of dirs) {
-    for (const skill of await loadFrom(dir.path, dir.source)) {
+    const loaded = await loadFrom(dir.path, dir.source);
+    warnings.push(...loaded.warnings);
+    for (const skill of loaded.skills) {
       byName.set(skill.name, skill);
     }
   }
 
-  return [...byName.values()];
+  return { skills: [...byName.values()], warnings };
 }
 
-async function loadFrom(dir: string, source: Skill["source"]): Promise<Skill[]> {
+async function loadFrom(dir: string, source: Skill["source"]): Promise<LoadedSkills> {
   let entries: string[];
   try {
     entries = await fs.readdir(dir);
   } catch {
-    return [];
+    return { skills: [], warnings: [] };
   }
 
   const skills: Skill[] = [];
+  const warnings: string[] = [];
 
   for (const entry of entries) {
     const filePath = path.join(dir, entry, "SKILL.md");
@@ -54,13 +64,24 @@ async function loadFrom(dir: string, source: Skill["source"]): Promise<Skill[]> 
       continue;
     }
 
-    const parsed = matter(raw);
-    const frontmatter = parsed.data as SkillFrontmatter;
-    const body = parsed.content.trim();
+    const parsed = parseFrontmatter(raw);
+    if (!parsed.ok) {
+      warnings.push(`Skipped ${filePath}: ${parsed.reason}`);
+      continue;
+    }
 
-    // A skill with no description cannot be chosen sensibly by the model, and
-    // an empty body would inject nothing, so both are required.
-    if (!frontmatter.description || body === "") continue;
+    const frontmatter = parsed.value.data as SkillFrontmatter;
+    const body = parsed.value.body;
+
+    if (!frontmatter.description) {
+      warnings.push(`Skipped ${filePath}: no description in frontmatter.`);
+      continue;
+    }
+
+    if (body === "") {
+      warnings.push(`Skipped ${filePath}: the body is empty.`);
+      continue;
+    }
 
     skills.push({
       name: frontmatter.name ?? entry,
@@ -71,5 +92,5 @@ async function loadFrom(dir: string, source: Skill["source"]): Promise<Skill[]> 
     });
   }
 
-  return skills;
+  return { skills, warnings };
 }

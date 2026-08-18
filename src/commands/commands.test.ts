@@ -190,11 +190,11 @@ describe("markdown commands", () => {
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path.join(dir, "notes.txt"), "not a command");
 
-    expect(await loadMarkdownCommands(cwd)).toEqual([]);
+    expect((await loadMarkdownCommands(cwd)).commands).toEqual([]);
   });
 
   test("a missing commands directory is not an error", async () => {
-    expect(await loadMarkdownCommands(cwd)).toEqual([]);
+    expect((await loadMarkdownCommands(cwd)).commands).toEqual([]);
   });
 
   test("a project command shadows a global one of the same name", async () => {
@@ -203,17 +203,56 @@ describe("markdown commands", () => {
     await writeCommand(global, "review", "---\ndescription: global\n---\nGlobal body.");
     await writeCommand(project, "review", "---\ndescription: project\n---\nProject body.");
 
-    const loaded = await loadMarkdownCommands(cwd, [global, project]);
+    const { commands: loaded } = await loadMarkdownCommands(cwd, [global, project]);
 
     expect(loaded).toHaveLength(1);
     expect(loaded[0]?.description).toBe("project");
+  });
+
+  test("malformed frontmatter is skipped rather than crashing the load", async () => {
+    await writeCommand(
+      path.join(cwd, ".stak", "commands"),
+      "broken",
+      "---\ndescription: [unclosed\nother: value\n---\nBody.",
+    );
+
+    const loaded = await loadMarkdownCommands(cwd);
+
+    expect(loaded.commands).toEqual([]);
+    expect(loaded.warnings.join(" ")).toContain("broken");
+  });
+
+  test("one bad command does not prevent the others loading", async () => {
+    const dir = path.join(cwd, ".stak", "commands");
+    await writeCommand(dir, "broken", "---\ndescription: [unclosed\nother: value\n---\nBody.");
+    await writeCommand(dir, "good", "---\ndescription: fine\n---\nUseful body.");
+
+    const loaded = await loadMarkdownCommands(cwd, [dir]);
+
+    expect(loaded.commands.map((c) => c.name)).toEqual(["good"]);
+    expect(loaded.warnings).toHaveLength(1);
+  });
+
+  test("two files with identical bad frontmatter are both skipped", async () => {
+    // gray-matter's content cache returns empty data on a repeat parse of the
+    // same malformed input instead of throwing, so without the cache disabled
+    // the second file would load silently.
+    const dir = path.join(cwd, ".stak", "commands");
+    const bad = "---\ndescription: [unclosed\nother: value\n---\nBody.";
+    await writeCommand(dir, "broken-one", bad);
+    await writeCommand(dir, "broken-two", bad);
+
+    const loaded = await loadMarkdownCommands(cwd, [dir]);
+
+    expect(loaded.commands).toEqual([]);
+    expect(loaded.warnings).toHaveLength(2);
   });
 
   test("a global command is available when the project has none", async () => {
     const global = path.join(cwd, "global-commands");
     await writeCommand(global, "audit", "---\ndescription: global audit\n---\nAudit.");
 
-    const loaded = await loadMarkdownCommands(cwd, [
+    const { commands: loaded } = await loadMarkdownCommands(cwd, [
       global,
       path.join(cwd, ".stak", "commands"),
     ]);

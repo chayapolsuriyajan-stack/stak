@@ -49,7 +49,7 @@ try {
 
 const cwd = process.cwd();
 const permissions = new PermissionManager(config.permissionMode, cwd);
-const skills = await loadSkills(cwd);
+const { skills, warnings: skillWarnings } = await loadSkills(cwd);
 const tools = new ToolRegistry({
   cwd,
   permissions,
@@ -88,7 +88,7 @@ async function resumeLatest(dir: string) {
 
 const commands = await CommandRegistry.load(cwd);
 
-for (const warning of config.warnings) {
+for (const warning of [...config.warnings, ...skillWarnings, ...commands.warnings]) {
   console.warn(`stak: ${warning}`);
 }
 

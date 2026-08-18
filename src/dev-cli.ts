@@ -42,7 +42,7 @@ if (providerName === "anthropic") {
 const cwd = process.cwd();
 // The harness has no UI to prompt with, so it runs unattended.
 const permissions = new PermissionManager("auto-bypass", cwd);
-const skills = await loadSkills(cwd);
+const { skills } = await loadSkills(cwd);
 const tools = new ToolRegistry({
   cwd,
   permissions,

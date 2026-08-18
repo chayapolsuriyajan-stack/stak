@@ -4,17 +4,22 @@ import type { Command, CommandContext, CommandOutcome } from "./types.js";
 
 export class CommandRegistry {
   private commands = new Map<string, Command>();
+  readonly warnings: string[];
 
-  constructor(commands: Command[]) {
+  constructor(commands: Command[], warnings: string[] = []) {
     for (const command of commands) {
       this.commands.set(command.name, command);
     }
+    this.warnings = warnings;
   }
 
   /** Built-ins are registered last so a markdown file cannot shadow /exit. */
   static async load(cwd: string = process.cwd()): Promise<CommandRegistry> {
     const markdown = await loadMarkdownCommands(cwd);
-    return new CommandRegistry([...markdown, ...builtinCommands]);
+    return new CommandRegistry(
+      [...markdown.commands, ...builtinCommands],
+      markdown.warnings,
+    );
   }
 
   list(): { name: string; description: string }[] {

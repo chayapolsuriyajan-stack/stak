@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import matter from "gray-matter";
 import { globalCommandsDir, projectCommandsDir } from "../config/paths.js";
+import { parseFrontmatter } from "../utils/frontmatter.js";
 import type { Command } from "./types.js";
 
 const ARGUMENT_PLACEHOLDER = "$ARGUMENTS";
@@ -9,6 +9,12 @@ const ARGUMENT_PLACEHOLDER = "$ARGUMENTS";
 interface CommandFrontmatter {
   description?: string;
   "argument-hint"?: string;
+}
+
+export interface LoadedCommands {
+  commands: Command[];
+  /** Why a file was rejected, so a command never fails to load in silence. */
+  warnings: string[];
 }
 
 /**
@@ -21,42 +27,58 @@ interface CommandFrontmatter {
 export async function loadMarkdownCommands(
   cwd: string = process.cwd(),
   dirs: string[] = [globalCommandsDir(), projectCommandsDir(cwd)],
-): Promise<Command[]> {
+): Promise<LoadedCommands> {
   const byName = new Map<string, Command>();
+  const warnings: string[] = [];
 
   for (const dir of dirs) {
-    for (const command of await loadFrom(dir)) {
+    const loaded = await loadFrom(dir);
+    warnings.push(...loaded.warnings);
+    for (const command of loaded.commands) {
       byName.set(command.name, command);
     }
   }
 
-  return [...byName.values()];
+  return { commands: [...byName.values()], warnings };
 }
 
-async function loadFrom(dir: string): Promise<Command[]> {
+async function loadFrom(dir: string): Promise<LoadedCommands> {
   let entries: string[];
   try {
     entries = await fs.readdir(dir);
   } catch {
-    return [];
+    return { commands: [], warnings: [] };
   }
 
   const commands: Command[] = [];
+  const warnings: string[] = [];
 
   for (const entry of entries) {
     if (!entry.endsWith(".md")) continue;
 
+    const filePath = path.join(dir, entry);
+
     let raw: string;
     try {
-      raw = await fs.readFile(path.join(dir, entry), "utf8");
+      raw = await fs.readFile(filePath, "utf8");
     } catch {
       continue;
     }
 
-    const parsed = matter(raw);
-    const frontmatter = parsed.data as CommandFrontmatter;
+    const parsed = parseFrontmatter(raw);
+    if (!parsed.ok) {
+      warnings.push(`Skipped ${filePath}: ${parsed.reason}`);
+      continue;
+    }
+
+    const frontmatter = parsed.value.data as CommandFrontmatter;
     const name = entry.slice(0, -".md".length);
-    const body = parsed.content.trim();
+    const body = parsed.value.body;
+
+    if (body === "") {
+      warnings.push(`Skipped ${filePath}: the body is empty.`);
+      continue;
+    }
 
     commands.push({
       name,
@@ -71,7 +93,7 @@ async function loadFrom(dir: string): Promise<Command[]> {
     });
   }
 
-  return commands;
+  return { commands, warnings };
 }
 
 /**

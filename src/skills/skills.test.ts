@@ -37,7 +37,7 @@ describe("loading", () => {
       "---\nname: pirate\ndescription: speak like a pirate\n---\nAlways say arrr.",
     );
 
-    const skills = await loadSkills(cwd, dirs(cwd));
+    const { skills } = await loadSkills(cwd, dirs(cwd));
 
     expect(skills).toHaveLength(1);
     expect(skills[0]?.name).toBe("pirate");
@@ -53,7 +53,7 @@ describe("loading", () => {
       "---\ndescription: review code\n---\nReview carefully.",
     );
 
-    const skills = await loadSkills(cwd, dirs(cwd));
+    const { skills } = await loadSkills(cwd, dirs(cwd));
 
     expect(skills[0]?.name).toBe("reviewer");
   });
@@ -70,7 +70,7 @@ describe("loading", () => {
       "---\ndescription: project version\n---\nProject body.",
     );
 
-    const skills = await loadSkills(cwd, dirs(cwd));
+    const { skills } = await loadSkills(cwd, dirs(cwd));
 
     expect(skills).toHaveLength(1);
     expect(skills[0]?.description).toBe("project version");
@@ -80,7 +80,7 @@ describe("loading", () => {
   test("skips a skill with no description", async () => {
     await writeSkill(path.join(cwd, ".stak", "skills"), "broken", "---\n---\nBody only.");
 
-    expect(await loadSkills(cwd, dirs(cwd))).toEqual([]);
+    expect((await loadSkills(cwd, dirs(cwd))).skills).toEqual([]);
   });
 
   test("skips a skill with an empty body", async () => {
@@ -90,17 +90,75 @@ describe("loading", () => {
       "---\ndescription: does nothing\n---\n",
     );
 
-    expect(await loadSkills(cwd, dirs(cwd))).toEqual([]);
+    expect((await loadSkills(cwd, dirs(cwd))).skills).toEqual([]);
   });
 
   test("ignores a directory with no SKILL.md", async () => {
     await fs.mkdir(path.join(cwd, ".stak", "skills", "notaskill"), { recursive: true });
 
-    expect(await loadSkills(cwd, dirs(cwd))).toEqual([]);
+    expect((await loadSkills(cwd, dirs(cwd))).skills).toEqual([]);
   });
 
   test("a missing skills directory is not an error", async () => {
-    expect(await loadSkills(cwd, dirs(cwd))).toEqual([]);
+    expect((await loadSkills(cwd, dirs(cwd))).skills).toEqual([]);
+  });
+
+  test("malformed frontmatter is skipped rather than crashing the load", async () => {
+    await writeSkill(
+      path.join(cwd, ".stak", "skills"),
+      "broken",
+      "---\nname: [unclosed\ndescription: bad yaml\n---\nBody.",
+    );
+
+    const loaded = await loadSkills(cwd, dirs(cwd));
+
+    expect(loaded.skills).toEqual([]);
+    expect(loaded.warnings.join(" ")).toContain("broken");
+  });
+
+  test("one bad skill does not prevent the others loading", async () => {
+    const dir = path.join(cwd, ".stak", "skills");
+    await writeSkill(dir, "broken", "---\nname: [unclosed\n---\nBody.");
+    await writeSkill(dir, "good", "---\ndescription: works fine\n---\nUseful body.");
+
+    const loaded = await loadSkills(cwd, dirs(cwd));
+
+    expect(loaded.skills.map((s) => s.name)).toEqual(["good"]);
+    expect(loaded.warnings).toHaveLength(1);
+  });
+
+  test("two skills with identical bad frontmatter are both skipped", async () => {
+    // Guards against gray-matter's content cache, which returns empty data on
+    // a repeat parse of the same malformed input rather than throwing.
+    const dir = path.join(cwd, ".stak", "skills");
+    const bad = "---\nname: [unclosed\ndescription: bad\n---\nBody.";
+    await writeSkill(dir, "broken-one", bad);
+    await writeSkill(dir, "broken-two", bad);
+
+    const loaded = await loadSkills(cwd, dirs(cwd));
+
+    expect(loaded.skills).toEqual([]);
+    expect(loaded.warnings).toHaveLength(2);
+  });
+
+  test("explains why a skill without a description was skipped", async () => {
+    await writeSkill(path.join(cwd, ".stak", "skills"), "nodesc", "---\n---\nBody.");
+
+    const loaded = await loadSkills(cwd, dirs(cwd));
+
+    expect(loaded.warnings.join(" ")).toContain("description");
+  });
+
+  test("explains why a skill with an empty body was skipped", async () => {
+    await writeSkill(
+      path.join(cwd, ".stak", "skills"),
+      "nobody",
+      "---\ndescription: nothing to say\n---\n",
+    );
+
+    const loaded = await loadSkills(cwd, dirs(cwd));
+
+    expect(loaded.warnings.join(" ")).toContain("empty");
   });
 });
 
