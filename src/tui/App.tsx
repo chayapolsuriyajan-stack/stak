@@ -7,12 +7,13 @@ import type { CommandOutcome } from "../commands/types.js";
 import { MODE_LABELS, type PermissionManager } from "../permissions/manager.js";
 import type { PermissionMode } from "../permissions/types.js";
 import { InputBox } from "./components/InputBox.js";
-import { MessageList } from "./components/MessageList.js";
+import { MessageItem, MessageList } from "./components/MessageList.js";
 import { PermissionPrompt } from "./components/PermissionPrompt.js";
 import { Splash } from "./components/Splash.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { useAgentSession } from "./hooks/useAgentSession.js";
 import { usePermissionPrompt } from "./hooks/usePermissionPrompt.js";
+import { splitLiveTail } from "./messageLiveness.js";
 import { extractNumberedChoices, resolveNumberedReply } from "./numberedChoices.js";
 import type { DisplayMessage } from "./types.js";
 
@@ -155,12 +156,20 @@ export function App({
     void sendMessage(resolved ?? trimmed);
   };
 
+  // Everything but a possible live tail goes to Static, which prints once
+  // and leaves real terminal scrollback alone from then on, instead of the
+  // whole history re-drawing every frame.
+  const { committed, liveTail } = splitLiveTail(messages);
+
   return (
     <Box flexDirection="column">
       {messages.length === 0 ? (
         <Splash version={version} />
       ) : (
-        <MessageList messages={messages} />
+        <>
+          <MessageList messages={committed} />
+          {liveTail && <MessageItem message={liveTail} />}
+        </>
       )}
 
       {request ? (

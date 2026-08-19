@@ -1,22 +1,26 @@
-import { Box, Text } from "ink";
+import { Box, Static, Text } from "ink";
 import type { DisplayMessage } from "../types.js";
 import { ACCENT, MUTED } from "../theme.js";
 
 export interface MessageListProps {
+  /** Finished messages only — nothing here should change again. Rendered via
+   * Ink's Static, which prints each item once to real terminal scrollback
+   * and never touches those rows again, instead of re-drawing the whole
+   * history on every frame. */
   messages: DisplayMessage[];
 }
 
 export function MessageList({ messages }: MessageListProps) {
   return (
-    <Box flexDirection="column">
-      {messages.map((message, index) => (
-        <MessageItem key={index} message={message} />
-      ))}
-    </Box>
+    <Static items={messages}>
+      {(message, index) => <MessageItem key={index} message={message} />}
+    </Static>
   );
 }
 
-function MessageItem({ message }: { message: DisplayMessage }) {
+/** Exported so the live (still-updating) tail message can reuse the same
+ * rendering outside of Static. */
+export function MessageItem({ message }: { message: DisplayMessage }) {
   switch (message.kind) {
     case "user":
       return (
