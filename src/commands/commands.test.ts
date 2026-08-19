@@ -22,7 +22,9 @@ function context(overrides: Partial<CommandContext> = {}) {
     getPermissionMode: () => "ask",
     setPermissionMode: vi.fn(async (mode: string) => mode),
     setModel: vi.fn(),
+    getModel: () => "test-model",
     describeModel: () => "ollama test-model",
+    listModels: vi.fn(async () => undefined),
     ...overrides,
   };
 }
@@ -87,6 +89,65 @@ describe("builtins", () => {
     await registry.run("/model llama3", ctx);
 
     expect(ctx.setModel).toHaveBeenCalledWith("llama3");
+  });
+
+  test("/model confirms the change with a before/after pair", async () => {
+    const registry = await CommandRegistry.load(cwd);
+    let current = "test-model";
+    const ctx = context({
+      describeModel: () => `ollama ${current}`,
+      setModel: (next: string) => {
+        current = next;
+      },
+    });
+
+    const outcome = await registry.run("/model llama3", ctx);
+
+    expect(outcome.kind).toBe("notice");
+    if (outcome.kind !== "notice") return;
+    expect(outcome.text).toBe("Model changed: ollama test-model → ollama llama3");
+  });
+
+  test("/model without arguments lists known models with the current one marked", async () => {
+    const registry = await CommandRegistry.load(cwd);
+    const ctx = context({
+      listModels: async () => ["llama3", "test-model", "qwen3"],
+    });
+
+    const outcome = await registry.run("/model", ctx);
+
+    expect(outcome.kind).toBe("notice");
+    if (outcome.kind !== "notice") return;
+    expect(outcome.text).toContain("❯ test-model");
+    expect(outcome.text).toContain("  llama3");
+    expect(outcome.text).toContain("  qwen3");
+  });
+
+  test("a rejecting listModels propagates through run, by design", async () => {
+    // The command layer does not swallow this itself — the caller (the TUI's
+    // command dispatch) is responsible for catching it, since only the caller
+    // can turn a rejection into a graceful error notice instead of a crash.
+    // This test exists so that responsibility stays visible if this command
+    // is ever refactored.
+    const registry = await CommandRegistry.load(cwd);
+    const ctx = context({
+      listModels: vi.fn(async () => {
+        throw new Error("network down");
+      }),
+    });
+
+    await expect(registry.run("/model", ctx)).rejects.toThrow("network down");
+  });
+
+  test("/model explains when the provider cannot list its models", async () => {
+    const registry = await CommandRegistry.load(cwd);
+    const ctx = context({ listModels: async () => undefined });
+
+    const outcome = await registry.run("/model", ctx);
+
+    expect(outcome.kind).toBe("notice");
+    if (outcome.kind !== "notice") return;
+    expect(outcome.text).toContain("can't list its models");
   });
 
   test("/permissions rejects an unknown mode", async () => {

@@ -37,6 +37,14 @@ export class CommandRegistry {
     return this.commands.has(name);
   }
 
+  /** Bare names for autocomplete, distinct from list()'s "/help"-formatted
+   * strings which fold the argument hint into the name. */
+  suggestions(): { name: string; description: string }[] {
+    return [...this.commands.values()]
+      .map((command) => ({ name: command.name, description: command.description }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   async run(
     input: string,
     context: Omit<CommandContext, "args" | "listCommands">,

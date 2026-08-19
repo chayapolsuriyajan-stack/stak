@@ -29,10 +29,24 @@ Inside a session:
 | --- | --- |
 | `/help` | list commands |
 | `/clear` | clear the transcript and start a new session |
-| `/model [name]` | show or switch the active model |
+| `/model [name]` | list known models with the current one marked, or switch to a new one |
 | `/permissions [mode]` | show or set the permission mode |
 | `/exit` | quit |
 | `shift+tab` | cycle the permission mode |
+| `esc` | interrupt a turn in progress, or quit when idle |
+
+Typing `/` shows matching commands as you type. `/model` with no argument
+lists what the active provider actually has available (Ollama's local models,
+or Anthropic/OpenAI's via their API) rather than a guess, and switching
+confirms with a before/after pair — `Model changed: ollama a → ollama b` — so
+a typo in the name doesn't silently "succeed."
+
+The status bar shows token usage and throughput for the last turn: total
+tokens, the input/output split, and tokens/second computed from wall-clock
+time. When the model's reply ends with a numbered list, answering with a bare
+number (`1`, `2`, ...) sends that option's text instead of the literal digit —
+useful for the model's own multiple-choice questions, and for approving a
+permission prompt (`1` = yes, `2` = no) without reaching for the arrow keys.
 
 ## Configuration
 

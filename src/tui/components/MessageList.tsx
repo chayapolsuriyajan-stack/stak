@@ -1,5 +1,6 @@
 import { Box, Text } from "ink";
 import type { DisplayMessage } from "../types.js";
+import { ACCENT, MUTED } from "../theme.js";
 
 export interface MessageListProps {
   messages: DisplayMessage[];
@@ -20,7 +21,7 @@ function MessageItem({ message }: { message: DisplayMessage }) {
     case "user":
       return (
         <Box marginBottom={1}>
-          <Text color="#a5b4fc" bold>
+          <Text color={ACCENT} bold>
             {"> "}
           </Text>
           <Text>{message.text}</Text>
@@ -40,10 +41,10 @@ function MessageItem({ message }: { message: DisplayMessage }) {
           <Text color="cyan">
             {"  ⚒ "}
             {message.name}
-            <Text color="gray"> {summarize(message.input)}</Text>
+            <Text color={MUTED}> {summarize(message.input)}</Text>
           </Text>
           {message.output !== undefined && (
-            <Text color={message.isError ? "red" : "gray"}>
+            <Text color={message.isError ? "red" : MUTED}>
               {"    "}
               {firstLines(message.output, 6)}
             </Text>
@@ -54,7 +55,7 @@ function MessageItem({ message }: { message: DisplayMessage }) {
     case "notice":
       return (
         <Box marginBottom={1}>
-          <Text color="gray">{message.text}</Text>
+          <Text color={MUTED}>{message.text}</Text>
         </Box>
       );
 

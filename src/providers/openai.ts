@@ -91,6 +91,16 @@ export class OpenAIProvider implements Provider {
     });
   }
 
+  async listModels(): Promise<string[]> {
+    const page = await this.client.models.list();
+    // The endpoint returns every model the account can see, including
+    // embeddings, audio, and image models that cannot serve a chat turn.
+    return page.data
+      .map((model) => model.id)
+      .filter((id) => /^(gpt-|o[1-9])/.test(id))
+      .sort();
+  }
+
   async *streamChat(req: ChatRequest): AsyncGenerator<ProviderStreamEvent> {
     // Tool calls arrive as fragments keyed by index, with the id and name
     // usually only present on the first fragment.
@@ -102,10 +112,20 @@ export class OpenAIProvider implements Provider {
         model: req.model,
         messages: toOpenAIMessages(req.systemPrompt, req.history),
         stream: true,
+        stream_options: { include_usage: true },
         ...(req.tools.length > 0 ? { tools: toOpenAITools(req.tools) } : {}),
       });
 
       for await (const chunk of stream) {
+        // The usage-bearing final chunk carries no choices.
+        if (chunk.usage) {
+          yield {
+            type: "usage",
+            inputTokens: chunk.usage.prompt_tokens,
+            outputTokens: chunk.usage.completion_tokens,
+          };
+        }
+
         const choice = chunk.choices[0];
         if (!choice) continue;
 

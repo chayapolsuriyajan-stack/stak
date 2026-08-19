@@ -17,7 +17,10 @@ export interface CommandContext {
   setPermissionMode: (mode: string) => Promise<string>;
   getPermissionMode: () => string;
   setModel: (model: string) => void;
+  getModel: () => string;
   describeModel: () => string;
+  /** The active provider's known models, or undefined if it cannot list them. */
+  listModels: () => Promise<string[] | undefined>;
   listCommands: () => { name: string; description: string }[];
 }
 

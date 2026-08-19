@@ -88,6 +88,14 @@ for await (const event of runTurn(ctx, prompt)) {
         `[result${event.isError ? " error" : ""}] ${event.output.split("\n").slice(0, 5).join("\n")}\n`,
       );
       break;
+    case "usage": {
+      const tokPerSec =
+        event.elapsedMs >= 100 ? event.outputTokens / (event.elapsedMs / 1000) : 0;
+      process.stdout.write(
+        `[usage] in=${event.inputTokens} out=${event.outputTokens} ${tokPerSec.toFixed(1)} tok/s\n`,
+      );
+      break;
+    }
     case "turn-complete":
       process.stdout.write("\n");
       break;

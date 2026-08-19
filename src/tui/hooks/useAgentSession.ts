@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { AgentContext } from "../../agent/loop.js";
 import { runTurn } from "../../agent/loop.js";
+import type { TurnUsage } from "../components/StatusBar.js";
 import type { DisplayMessage } from "../types.js";
 
 /**
@@ -15,6 +16,7 @@ export function useAgentSession(
 ) {
   const [messages, setMessages] = useState<DisplayMessage[]>(initialMessages);
   const [busy, setBusy] = useState(false);
+  const [usage, setUsage] = useState<TurnUsage | undefined>(undefined);
   const pendingText = useRef("");
   const flushTimer = useRef<NodeJS.Timeout | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -63,6 +65,7 @@ export function useAgentSession(
   const clear = useCallback(() => {
     ctx.history.length = 0;
     setMessages([]);
+    setUsage(undefined);
   }, [ctx]);
 
   const sendMessage = useCallback(
@@ -117,6 +120,14 @@ export function useAgentSession(
               startFlushing();
               break;
 
+            case "usage":
+              setUsage({
+                inputTokens: event.inputTokens,
+                outputTokens: event.outputTokens,
+                elapsedMs: event.elapsedMs,
+              });
+              break;
+
             case "turn-complete":
               break;
           }
@@ -134,5 +145,5 @@ export function useAgentSession(
     abortRef.current?.abort();
   }, []);
 
-  return { messages, busy, sendMessage, append, clear, interrupt };
+  return { messages, busy, sendMessage, append, clear, interrupt, usage };
 }

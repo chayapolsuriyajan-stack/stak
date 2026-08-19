@@ -45,6 +45,7 @@ export type AgentEvent =
       output: string;
       isError: boolean;
     }
+  | { type: "usage"; inputTokens: number; outputTokens: number; elapsedMs: number }
   | { type: "turn-complete" }
   | { type: "interrupted" }
   | { type: "error"; error: Error };

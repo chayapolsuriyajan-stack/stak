@@ -3,6 +3,7 @@ import { useState } from "react";
 import type { AgentContext } from "../agent/loop.js";
 import type { CommandRegistry } from "../commands/dispatch.js";
 import { isCommand } from "../commands/dispatch.js";
+import type { CommandOutcome } from "../commands/types.js";
 import { MODE_LABELS, type PermissionManager } from "../permissions/manager.js";
 import type { PermissionMode } from "../permissions/types.js";
 import { InputBox } from "./components/InputBox.js";
@@ -12,6 +13,7 @@ import { Splash } from "./components/Splash.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { useAgentSession } from "./hooks/useAgentSession.js";
 import { usePermissionPrompt } from "./hooks/usePermissionPrompt.js";
+import { extractNumberedChoices, resolveNumberedReply } from "./numberedChoices.js";
 import type { DisplayMessage } from "./types.js";
 
 export interface AppProps {
@@ -34,7 +36,7 @@ export function App({
   onNewSession,
 }: AppProps) {
   const { exit } = useApp();
-  const { messages, busy, sendMessage, append, clear, interrupt } = useAgentSession(
+  const { messages, busy, sendMessage, append, clear, interrupt, usage } = useAgentSession(
     ctx,
     initialMessages,
   );
@@ -66,26 +68,52 @@ export function App({
   );
 
   const runCommand = async (raw: string) => {
-    const outcome = await commands.run(raw, {
-      clear: () => {
-        clear();
-        // A cleared conversation is a new session, not a gap in the old one.
-        onNewSession?.();
-      },
-      getPermissionMode: () => permissions.getMode(),
-      setPermissionMode: async (next) => {
-        await permissions.setMode(next as PermissionMode);
-        setMode(permissions.getMode());
-        return permissions.getMode();
-      },
-      setModel: (next) => {
-        // The loop reads ctx.model per request, so mutating it takes effect on
-        // the next turn without rebuilding the session.
-        ctx.model = next;
-        setModel(next);
-      },
-      describeModel: () => `${ctx.provider.name} ${ctx.model}`,
-    });
+    let outcome: CommandOutcome;
+    try {
+      outcome = await commands.run(raw, {
+        clear: () => {
+          clear();
+          // A cleared conversation is a new session, not a gap in the old one.
+          onNewSession?.();
+        },
+        getPermissionMode: () => permissions.getMode(),
+        setPermissionMode: async (next) => {
+          await permissions.setMode(next as PermissionMode);
+          setMode(permissions.getMode());
+          return permissions.getMode();
+        },
+        setModel: (next) => {
+          // The loop reads ctx.model per request, so mutating it takes effect
+          // on the next turn without rebuilding the session.
+          ctx.model = next;
+          setModel(next);
+        },
+        getModel: () => ctx.model,
+        describeModel: () => `${ctx.provider.name} ${ctx.model}`,
+        listModels: async () => {
+          // A live API call (Anthropic/OpenAI) can fail on a bad key or a
+          // network hiccup; that should read as "can't list" plus a visible
+          // reason, not crash the session with an unhandled rejection.
+          try {
+            return await ctx.provider.listModels?.();
+          } catch (error) {
+            append({
+              kind: "error",
+              text: `Couldn't list models: ${error instanceof Error ? error.message : String(error)}`,
+            });
+            return undefined;
+          }
+        },
+      });
+    } catch (error) {
+      // A command that throws for any other reason should not take the whole
+      // session down with it.
+      append({
+        kind: "error",
+        text: error instanceof Error ? error.message : String(error),
+      });
+      return;
+    }
 
     switch (outcome.kind) {
       case "exit":
@@ -115,7 +143,16 @@ export function App({
       return;
     }
 
-    void sendMessage(trimmed);
+    // A bare "2" after the model offers a numbered list answers that list,
+    // rather than being sent to the model as the literal text "2".
+    const lastAssistant = [...messages].reverse().find((m) => m.kind === "assistant");
+    const choices =
+      lastAssistant?.kind === "assistant"
+        ? extractNumberedChoices(lastAssistant.text)
+        : undefined;
+    const resolved = resolveNumberedReply(trimmed, choices);
+
+    void sendMessage(resolved ?? trimmed);
   };
 
   return (
@@ -134,6 +171,7 @@ export function App({
           onChange={setInput}
           onSubmit={handleSubmit}
           disabled={busy}
+          commands={commands.suggestions()}
         />
       )}
 
@@ -142,6 +180,7 @@ export function App({
         model={model}
         busy={busy}
         hint={`enter send · shift+tab ${mode}`}
+        usage={usage}
       />
     </Box>
   );

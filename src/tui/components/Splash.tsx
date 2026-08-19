@@ -1,4 +1,5 @@
 import { Box, Text } from "ink";
+import { ACCENT, MUTED } from "../theme.js";
 
 /**
  * Block-character wordmark. Each string is one terminal row; the glyphs are
@@ -30,20 +31,20 @@ export function Splash({ version }: SplashProps) {
     <Box flexDirection="column" alignItems="center" paddingY={2}>
       <Box flexDirection="column">
         {WORDMARK.map((row, index) => (
-          <Text key={index} color="#a5b4fc" bold>
+          <Text key={index} color={ACCENT} bold>
             {row}
           </Text>
         ))}
         <Box justifyContent="flex-end">
-          <Text color="gray">v{version}</Text>
+          <Text color={MUTED}>v{version}</Text>
         </Box>
       </Box>
 
       <Box flexDirection="column" marginTop={2}>
         {COMMANDS.map(([name, description]) => (
           <Text key={name}>
-            <Text color="#a5b4fc">{name.padEnd(14)}</Text>
-            <Text color="gray">{description}</Text>
+            <Text color={ACCENT}>{name.padEnd(14)}</Text>
+            <Text color={MUTED}>{description}</Text>
           </Text>
         ))}
       </Box>

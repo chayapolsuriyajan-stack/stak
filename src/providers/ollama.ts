@@ -118,6 +118,14 @@ export class OllamaProvider implements Provider {
           yield { type: "text-delta", text: content };
         }
 
+        if (chunk.done) {
+          yield {
+            type: "usage",
+            inputTokens: chunk.prompt_eval_count ?? 0,
+            outputTokens: chunk.eval_count ?? 0,
+          };
+        }
+
         // Unlike Anthropic and OpenAI, Ollama hands over a complete tool call
         // in one chunk, so synthesize the delta/done pair the loop expects.
         const calls = chunk.message?.tool_calls;

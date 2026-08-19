@@ -31,6 +31,7 @@ export type ProviderStreamEvent =
   | { type: "text-delta"; text: string }
   | { type: "tool-call-delta"; id: string; name?: string; argsFragment?: string }
   | { type: "tool-call-done"; id: string; name: string; args: unknown }
+  | { type: "usage"; inputTokens: number; outputTokens: number }
   | { type: "message-done"; stopReason: StopReason }
   | { type: "error"; error: Error };
 

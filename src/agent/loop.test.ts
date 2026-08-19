@@ -53,6 +53,7 @@ describe("a plain text turn", () => {
     expect(events.map((e) => e.type)).toEqual([
       "text-delta",
       "text-delta",
+      "usage",
       "turn-complete",
     ]);
   });
@@ -106,6 +107,7 @@ describe("tool calls", () => {
       "tool-call-start",
       "tool-call-result",
       "text-delta",
+      "usage",
       "turn-complete",
     ]);
   });
@@ -143,6 +145,47 @@ describe("tool calls", () => {
     const result = events.find((e) => e.type === "tool-call-result");
 
     expect(result).toMatchObject({ isError: true });
+  });
+});
+
+describe("usage", () => {
+  test("sums tokens across every round trip in the turn", async () => {
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "tool-call-done", id: "t1", name: "read", args: {} },
+          { type: "usage", inputTokens: 100, outputTokens: 20 },
+          { type: "message-done", stopReason: "tool_use" },
+        ],
+        [
+          { type: "text-delta", text: "done" },
+          { type: "usage", inputTokens: 130, outputTokens: 5 },
+          { type: "message-done", stopReason: "end_turn" },
+        ],
+      ]),
+      { executeTool: async () => ({ output: "ok", isError: false }) },
+    );
+
+    const events = await collect(runTurn(ctx, "go"));
+    const usage = events.find((e) => e.type === "usage");
+
+    expect(usage).toMatchObject({ inputTokens: 230, outputTokens: 25 });
+  });
+
+  test("a provider that never reports usage yields zero, not undefined", async () => {
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "text-delta", text: "hi" },
+          { type: "message-done", stopReason: "end_turn" },
+        ],
+      ]),
+    );
+
+    const events = await collect(runTurn(ctx, "hi"));
+    const usage = events.find((e) => e.type === "usage");
+
+    expect(usage).toMatchObject({ inputTokens: 0, outputTokens: 0 });
   });
 });
 

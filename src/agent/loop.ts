@@ -38,6 +38,12 @@ export async function* runTurn(
   const { signal } = options;
   append(ctx, userText(input));
 
+  const turnStart = Date.now();
+  // Each round trip is a distinct billed call, so both figures sum across the
+  // whole turn rather than reflecting just the final round.
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
     if (signal?.aborted) return yield interrupted();
     const assistantBlocks: ContentBlock[] = [];
@@ -65,6 +71,11 @@ export async function* runTurn(
 
         case "tool-call-done":
           toolCalls.push({ id: event.id, name: event.name, input: event.args });
+          break;
+
+        case "usage":
+          totalInputTokens += event.inputTokens;
+          totalOutputTokens += event.outputTokens;
           break;
 
         case "error":
@@ -95,6 +106,12 @@ export async function* runTurn(
     }
 
     if (toolCalls.length === 0) {
+      yield {
+        type: "usage",
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+        elapsedMs: Date.now() - turnStart,
+      };
       yield { type: "turn-complete" };
       return;
     }

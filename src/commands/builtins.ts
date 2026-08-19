@@ -35,14 +35,35 @@ export const builtinCommands: Command[] = [
     description: "show or switch the active model",
     argumentHint: "[model]",
     source: "builtin",
-    run(ctx) {
+    async run(ctx) {
       const requested = ctx.args.trim();
+
       if (requested === "") {
-        return { kind: "notice", text: `Using ${ctx.describeModel()}` };
+        const current = ctx.getModel();
+        const available = await ctx.listModels();
+
+        if (!available) {
+          return {
+            kind: "notice",
+            text: `Current model: ${ctx.describeModel()}\nThis provider can't list its models here; run /model <name> to switch.`,
+          };
+        }
+
+        const lines = available.map(
+          (name) => `  ${name === current ? "❯" : " "} ${name}`,
+        );
+        return {
+          kind: "notice",
+          text: [`Current model: ${ctx.describeModel()}`, ...lines].join("\n"),
+        };
       }
 
+      const before = ctx.describeModel();
       ctx.setModel(requested);
-      return { kind: "notice", text: `Switched to ${ctx.describeModel()}` };
+      // Confirming with the before/after pair, not just the new value, is the
+      // point: without it a typo-model silently "succeeds" and only the next
+      // reply's failure reveals nothing actually changed.
+      return { kind: "notice", text: `Model changed: ${before} → ${ctx.describeModel()}` };
     },
   },
 
