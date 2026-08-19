@@ -45,6 +45,28 @@ describe("read", () => {
     expect(result.output).toContain("3\t3");
     expect(result.output).not.toContain("4\t4");
   });
+
+  test("refuses to read a file outside the project via ..", async () => {
+    const secret = path.join(path.dirname(cwd), "secret.txt");
+    await fs.writeFile(secret, "top secret");
+
+    const result = await readTool.execute({ path: "../secret.txt" }, { cwd });
+
+    expect(result.isError).toBe(true);
+    expect(result.output).not.toContain("top secret");
+    await fs.rm(secret, { force: true });
+  });
+
+  test("refuses to read an absolute path outside the project", async () => {
+    const secret = path.join(path.dirname(cwd), "secret2.txt");
+    await fs.writeFile(secret, "top secret");
+
+    const result = await readTool.execute({ path: secret }, { cwd });
+
+    expect(result.isError).toBe(true);
+    expect(result.output).not.toContain("top secret");
+    await fs.rm(secret, { force: true });
+  });
 });
 
 describe("write", () => {
@@ -63,6 +85,29 @@ describe("write", () => {
     const result = await writeTool.execute({ path: "a.txt", content: "second" }, { cwd });
 
     expect(result.output).toContain("Overwrote");
+  });
+
+  test("refuses to write outside the project via ..", async () => {
+    const target = path.join(path.dirname(cwd), "planted.txt");
+    await fs.rm(target, { force: true });
+
+    const result = await writeTool.execute(
+      { path: "../planted.txt", content: "malicious" },
+      { cwd },
+    );
+
+    expect(result.isError).toBe(true);
+    await expect(fs.access(target)).rejects.toThrow();
+  });
+
+  test("refuses to write to an absolute path outside the project", async () => {
+    const target = path.join(path.dirname(cwd), "planted2.txt");
+    await fs.rm(target, { force: true });
+
+    const result = await writeTool.execute({ path: target, content: "malicious" }, { cwd });
+
+    expect(result.isError).toBe(true);
+    await expect(fs.access(target)).rejects.toThrow();
   });
 });
 
@@ -115,6 +160,20 @@ describe("edit", () => {
     expect(result.isError).toBe(true);
     expect(result.output).toContain("not found");
   });
+
+  test("refuses to edit a file outside the project via ..", async () => {
+    const secret = path.join(path.dirname(cwd), "secret3.txt");
+    await fs.writeFile(secret, "original");
+
+    const result = await editTool.execute(
+      { path: "../secret3.txt", old_string: "original", new_string: "tampered" },
+      { cwd },
+    );
+
+    expect(result.isError).toBe(true);
+    expect(await fs.readFile(secret, "utf8")).toBe("original");
+    await fs.rm(secret, { force: true });
+  });
 });
 
 describe("bash", () => {
@@ -149,6 +208,27 @@ describe("glob", () => {
 
     expect(result.output).toContain("No files match");
   });
+
+  test("refuses a pattern that climbs out of the project", async () => {
+    const result = await globTool.execute({ pattern: "../**/*.ts" }, { cwd });
+
+    expect(result.isError).toBe(true);
+  });
+
+  test("refuses an absolute pattern", async () => {
+    const result = await globTool.execute({ pattern: "/etc/**" }, { cwd });
+
+    expect(result.isError).toBe(true);
+  });
+
+  test("refuses a cwd argument that escapes the project", async () => {
+    const result = await globTool.execute(
+      { pattern: "*", cwd: path.dirname(cwd) },
+      { cwd },
+    );
+
+    expect(result.isError).toBe(true);
+  });
 });
 
 describe("grep", () => {
@@ -165,5 +245,28 @@ describe("grep", () => {
 
     expect(result.isError).toBe(true);
     expect(result.output).toContain("Invalid regular expression");
+  });
+
+  test("refuses to search a path outside the project", async () => {
+    const secret = path.join(path.dirname(cwd), "secret4.txt");
+    await fs.writeFile(secret, "findme-secret-marker");
+
+    const result = await grepTool.execute(
+      { pattern: "findme-secret-marker", path: ".." },
+      { cwd },
+    );
+
+    expect(result.isError).toBe(true);
+    expect(result.output).not.toContain("findme-secret-marker");
+    await fs.rm(secret, { force: true });
+  });
+
+  test("refuses a glob restriction that climbs out of the project", async () => {
+    const result = await grepTool.execute(
+      { pattern: "anything", glob: "../**/*.txt" },
+      { cwd },
+    );
+
+    expect(result.isError).toBe(true);
   });
 });

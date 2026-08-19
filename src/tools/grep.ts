@@ -3,6 +3,7 @@ import path from "node:path";
 import fg from "fast-glob";
 import { z } from "zod";
 import { DEFAULT_IGNORE } from "./glob.js";
+import { assertSafeGlobPattern, resolveWithinRoot } from "./pathSafety.js";
 import type { Tool } from "./types.js";
 
 const MAX_MATCHES = 200;
@@ -33,7 +34,14 @@ export const grepTool: Tool<z.infer<typeof schema>> = {
       };
     }
 
-    const root = path.resolve(ctx.cwd, args.path ?? ".");
+    if (args.glob !== undefined) {
+      const safePattern = assertSafeGlobPattern(args.glob);
+      if (!safePattern.ok) return { output: safePattern.reason, isError: true };
+    }
+
+    const resolved = resolveWithinRoot(ctx.cwd, args.path ?? ".");
+    if (!resolved.ok) return { output: resolved.reason, isError: true };
+    const root = resolved.path;
     const files = await collectFiles(root, args.glob);
 
     if (files.length === 0) {

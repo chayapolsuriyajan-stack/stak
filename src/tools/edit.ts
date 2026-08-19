@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
-import path from "node:path";
 import { z } from "zod";
+import { resolveWithinRoot } from "./pathSafety.js";
 import { describeFsError } from "./read.js";
 import type { Tool } from "./types.js";
 
@@ -22,7 +22,9 @@ export const editTool: Tool<z.infer<typeof schema>> = {
   riskTier: "edit",
 
   async execute(args, ctx) {
-    const target = path.resolve(ctx.cwd, args.path);
+    const resolved = resolveWithinRoot(ctx.cwd, args.path);
+    if (!resolved.ok) return { output: resolved.reason, isError: true };
+    const target = resolved.path;
 
     if (args.old_string === args.new_string) {
       return { output: "old_string and new_string are identical.", isError: true };

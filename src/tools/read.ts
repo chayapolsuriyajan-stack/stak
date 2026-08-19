@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
-import path from "node:path";
 import { z } from "zod";
+import { resolveWithinRoot } from "./pathSafety.js";
 import type { Tool } from "./types.js";
 
 const DEFAULT_LIMIT = 2000;
@@ -20,7 +20,9 @@ export const readTool: Tool<z.infer<typeof schema>> = {
   riskTier: "read-only",
 
   async execute(args, ctx) {
-    const target = path.resolve(ctx.cwd, args.path);
+    const resolved = resolveWithinRoot(ctx.cwd, args.path);
+    if (!resolved.ok) return { output: resolved.reason, isError: true };
+    const target = resolved.path;
 
     let content: string;
     try {

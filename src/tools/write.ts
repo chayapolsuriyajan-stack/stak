@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
+import { resolveWithinRoot } from "./pathSafety.js";
 import { describeFsError } from "./read.js";
 import type { Tool } from "./types.js";
 
@@ -17,7 +18,9 @@ export const writeTool: Tool<z.infer<typeof schema>> = {
   riskTier: "edit",
 
   async execute(args, ctx) {
-    const target = path.resolve(ctx.cwd, args.path);
+    const resolved = resolveWithinRoot(ctx.cwd, args.path);
+    if (!resolved.ok) return { output: resolved.reason, isError: true };
+    const target = resolved.path;
 
     try {
       await fs.mkdir(path.dirname(target), { recursive: true });

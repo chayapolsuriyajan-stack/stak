@@ -1,5 +1,6 @@
 import fg from "fast-glob";
 import { z } from "zod";
+import { assertSafeGlobPattern, resolveWithinRoot } from "./pathSafety.js";
 import type { Tool } from "./types.js";
 
 const MAX_RESULTS = 500;
@@ -27,9 +28,15 @@ export const globTool: Tool<z.infer<typeof schema>> = {
   riskTier: "read-only",
 
   async execute(args, ctx) {
+    const safePattern = assertSafeGlobPattern(args.pattern);
+    if (!safePattern.ok) return { output: safePattern.reason, isError: true };
+
+    const resolved = resolveWithinRoot(ctx.cwd, args.cwd ?? ".");
+    if (!resolved.ok) return { output: resolved.reason, isError: true };
+
     try {
       const matches = await fg(args.pattern, {
-        cwd: args.cwd ?? ctx.cwd,
+        cwd: resolved.path,
         ignore: DEFAULT_IGNORE,
         onlyFiles: true,
         dot: false,
