@@ -19,7 +19,7 @@ npm link
 ```bash
 stak                       # start a session in the current directory
 stak --continue            # resume the most recent session here
-stak --model qwen3.8-iq4xs # override the model for this run
+stak --model qwen3.8-q3xl # override the model for this run
 stak --provider anthropic  # override the provider
 ```
 
@@ -55,7 +55,7 @@ Credentials and defaults live in `~/.stak/config.json`:
 ```json
 {
   "defaultProvider": "ollama",
-  "defaultModel": "qwen3.8-iq4xs",
+  "defaultModel": "qwen3.8-q3xl",
   "anthropicApiKey": "sk-...",
   "openaiApiKey": "sk-...",
   "ollamaHost": "http://localhost:11434"

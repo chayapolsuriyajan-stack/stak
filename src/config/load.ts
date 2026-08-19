@@ -11,7 +11,7 @@ import type {
 const DEFAULT_MODELS: Record<ProviderName, string> = {
   anthropic: "claude-sonnet-4-5",
   openai: "gpt-4o",
-  ollama: "qwen3.8-iq4xs",
+  ollama: "qwen3.8-q3xl",
 };
 
 const SECRET_KEYS = ["anthropicApiKey", "openaiApiKey", "apiKey", "token"];

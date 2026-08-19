@@ -36,7 +36,7 @@ if (providerName === "anthropic") {
   defaultModel = "claude-sonnet-4-5";
 } else {
   provider = new OllamaProvider({ host: process.env["OLLAMA_HOST"] });
-  defaultModel = "qwen3.8-iq4xs";
+  defaultModel = "qwen3.8-q3xl";
 }
 
 const cwd = process.cwd();
