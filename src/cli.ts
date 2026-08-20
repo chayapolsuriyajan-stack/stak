@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { render } from "ink";
 import React from "react";
 import type { AgentContext } from "./agent/loop.js";
+import { createModelInfoCache } from "./agent/modelInfo.js";
 import { buildSystemPrompt } from "./agent/systemPrompt.js";
 import type { Message } from "./agent/types.js";
 import { CommandRegistry } from "./commands/dispatch.js";
@@ -139,6 +140,7 @@ render(
     initialMessages: resumed ? toDisplayMessages(resumed.history) : [],
     onResumeSession: resumeSession,
     systemPromptFor,
+    modelInfoCache: createModelInfoCache(),
     onNewSession: () => {
       store = new SessionStore({ provider: provider.name, model: ctx.model, cwd });
     },

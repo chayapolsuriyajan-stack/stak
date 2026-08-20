@@ -36,6 +36,14 @@ async function collect(generator: AsyncGenerator<AgentEvent>) {
   return events;
 }
 
+/** "progress" fires on every phase transition, which makes an exact
+ * event-sequence assertion fragile to touch every time a transition is
+ * added — filtered out here for tests asserting the substantive flow;
+ * progress itself has its own dedicated coverage below. */
+function withoutProgress(events: AgentEvent[]): AgentEvent[] {
+  return events.filter((e) => e.type !== "progress");
+}
+
 describe("a plain text turn", () => {
   test("streams text and completes", async () => {
     const ctx = context(
@@ -50,7 +58,7 @@ describe("a plain text turn", () => {
 
     const events = await collect(runTurn(ctx, "hi"));
 
-    expect(events.map((e) => e.type)).toEqual([
+    expect(withoutProgress(events).map((e) => e.type)).toEqual([
       "text-delta",
       "text-delta",
       "usage",
@@ -103,7 +111,7 @@ describe("tool calls", () => {
       name: "read",
       input: { path: "a" },
     });
-    expect(events.map((e) => e.type)).toEqual([
+    expect(withoutProgress(events).map((e) => e.type)).toEqual([
       "tool-call-start",
       "tool-call-result",
       "text-delta",
@@ -161,7 +169,7 @@ describe("truncation", () => {
 
     const events = await collect(runTurn(ctx, "hi"));
 
-    expect(events.map((e) => e.type)).toEqual([
+    expect(withoutProgress(events).map((e) => e.type)).toEqual([
       "text-delta",
       "truncated",
       "usage",
@@ -243,21 +251,183 @@ describe("usage", () => {
 
     expect(usage).toMatchObject({ inputTokens: 0, outputTokens: 0 });
   });
+
+  test("generatingMs excludes tool-execution time", async () => {
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "text-delta", text: "hi" },
+          { type: "usage", inputTokens: 10, outputTokens: 2, generatingMs: 50 },
+          { type: "message-done", stopReason: "end_turn" },
+        ],
+      ]),
+    );
+
+    const events = await collect(runTurn(ctx, "hi"));
+    const usage = events.find((e) => e.type === "usage");
+
+    // The provider's own reported generatingMs (50ms) should pass through
+    // essentially unchanged -- nowhere close to a slow tool's execution time.
+    expect(usage).toMatchObject({ type: "usage" });
+    if (usage?.type !== "usage") throw new Error("expected a usage event");
+    expect(usage.generatingMs).toBeLessThan(1000);
+  });
+
+  test("a slow tool does not inflate generatingMs", async () => {
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "tool-call-done", id: "t1", name: "bash", args: {} },
+          { type: "usage", inputTokens: 10, outputTokens: 2, generatingMs: 20 },
+          { type: "message-done", stopReason: "tool_use" },
+        ],
+        [
+          { type: "text-delta", text: "done" },
+          { type: "usage", inputTokens: 5, outputTokens: 1, generatingMs: 10 },
+          { type: "message-done", stopReason: "end_turn" },
+        ],
+      ]),
+      {
+        executeTool: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          return { output: "slow result", isError: false };
+        },
+      },
+    );
+
+    const events = await collect(runTurn(ctx, "go"));
+    const usage = events.find((e) => e.type === "usage");
+
+    if (usage?.type !== "usage") throw new Error("expected a usage event");
+    // 20ms + 10ms of reported generation time; the 300ms tool sleep must not
+    // leak in, since it happens strictly between the two rounds' streams.
+    expect(usage.generatingMs).toBeLessThan(300);
+  });
+});
+
+describe("progress", () => {
+  test("reports waiting at the start of a round, then generating on the first delta", async () => {
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "text-delta", text: "hi" },
+          { type: "message-done", stopReason: "end_turn" },
+        ],
+      ]),
+    );
+
+    const events = await collect(runTurn(ctx, "hi"));
+    const progress = events.filter((e) => e.type === "progress");
+
+    expect(progress[0]).toMatchObject({ phase: "waiting", round: 1 });
+    expect(progress.some((e) => e.type === "progress" && e.phase === "generating")).toBe(
+      true,
+    );
+  });
+
+  test("does not fire on every delta — only on transitions and round-end reconciliation", async () => {
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "text-delta", text: "a" },
+          { type: "text-delta", text: "b" },
+          { type: "text-delta", text: "c" },
+          { type: "text-delta", text: "d" },
+          { type: "text-delta", text: "e" },
+          { type: "message-done", stopReason: "end_turn" },
+        ],
+      ]),
+    );
+
+    const events = await collect(runTurn(ctx, "hi"));
+    const progress = events.filter((e) => e.type === "progress");
+    const deltas = events.filter((e) => e.type === "text-delta");
+
+    // One round: "waiting" at round start, "generating" on the first delta,
+    // then one more at round-end reconciliation — not one per delta.
+    expect(progress).toHaveLength(3);
+    expect(progress.length).toBeLessThan(deltas.length);
+  });
+
+  test("reports the tool name while a tool call is running", async () => {
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "tool-call-done", id: "t1", name: "bash", args: {} },
+          { type: "message-done", stopReason: "tool_use" },
+        ],
+        [{ type: "message-done", stopReason: "end_turn" }],
+      ]),
+      { executeTool: async () => ({ output: "ok", isError: false }) },
+    );
+
+    const events = await collect(runTurn(ctx, "go"));
+
+    expect(
+      events.some(
+        (e) =>
+          e.type === "progress" &&
+          typeof e.phase === "object" &&
+          e.phase.tool === "bash",
+      ),
+    ).toBe(true);
+  });
+
+  test("round number increments across tool-calling round trips", async () => {
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "tool-call-done", id: "t1", name: "read", args: {} },
+          { type: "message-done", stopReason: "tool_use" },
+        ],
+        [{ type: "message-done", stopReason: "end_turn" }],
+      ]),
+      { executeTool: async () => ({ output: "ok", isError: false }) },
+    );
+
+    const events = await collect(runTurn(ctx, "go"));
+    const rounds = events
+      .filter((e): e is Extract<AgentEvent, { type: "progress" }> => e.type === "progress")
+      .map((e) => e.round);
+
+    expect(Math.max(...rounds)).toBe(2);
+  });
+
+  test("reconciles the estimate to the authoritative count after a round", async () => {
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "text-delta", text: "hello world" },
+          { type: "usage", inputTokens: 5, outputTokens: 3 },
+          { type: "message-done", stopReason: "end_turn" },
+        ],
+      ]),
+    );
+
+    const events = await collect(runTurn(ctx, "hi"));
+    const progress = events.filter(
+      (e): e is Extract<AgentEvent, { type: "progress" }> => e.type === "progress",
+    );
+    const afterUsage = progress.at(-1);
+
+    expect(afterUsage?.outputTokens).toBe(3);
+    expect(afterUsage?.approx).toBe(false);
+  });
 });
 
 describe("failure handling", () => {
-  test("surfaces a provider error and stops", async () => {
+  test("surfaces a provider error and stops, but still reports usage first", async () => {
     const ctx = context(
       scriptedProvider([[{ type: "error", error: new Error("network down") }]]),
     );
 
     const events = await collect(runTurn(ctx, "hi"));
+    const withoutProg = withoutProgress(events);
 
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ type: "error" });
+    expect(withoutProg.map((e) => e.type)).toEqual(["usage", "error"]);
   });
 
-  test("stops rather than looping forever on endless tool calls", async () => {
+  test("stops rather than looping forever on endless tool calls, but still reports usage", async () => {
     const endless: ProviderStreamEvent[][] = Array.from({ length: 60 }, () => [
       { type: "tool-call-done" as const, id: "t", name: "read", args: {} },
       { type: "message-done" as const, stopReason: "tool_use" as const },
@@ -267,8 +437,10 @@ describe("failure handling", () => {
     });
 
     const events = await collect(runTurn(ctx, "go"));
-    const last = events[events.length - 1];
+    const withoutProg = withoutProgress(events);
+    const last = withoutProg[withoutProg.length - 1];
 
+    expect(withoutProg.some((e) => e.type === "usage")).toBe(true);
     expect(last).toMatchObject({ type: "error" });
     if (last?.type !== "error") return;
     expect(last.error.message).toContain("50");
@@ -276,7 +448,7 @@ describe("failure handling", () => {
 });
 
 describe("interruption", () => {
-  test("stops mid-stream when the signal aborts", async () => {
+  test("stops mid-stream when the signal aborts, but still reports usage", async () => {
     const controller = new AbortController();
     const ctx = context(
       scriptedProvider([
@@ -293,19 +465,21 @@ describe("interruption", () => {
       events.push(event);
       if (event.type === "text-delta") controller.abort();
     }
+    const withoutProg = withoutProgress(events);
 
-    expect(events.at(-1)).toMatchObject({ type: "interrupted" });
+    expect(withoutProg.at(-1)).toMatchObject({ type: "interrupted" });
+    expect(withoutProg.some((e) => e.type === "usage")).toBe(true);
     expect(events.filter((e) => e.type === "text-delta")).toHaveLength(1);
   });
 
-  test("does not start when already aborted", async () => {
+  test("does not start when already aborted, but still reports (zero) usage", async () => {
     const controller = new AbortController();
     controller.abort();
     const ctx = context(scriptedProvider([]));
 
     const events = await collect(runTurn(ctx, "hi", { signal: controller.signal }));
 
-    expect(events).toEqual([{ type: "interrupted" }]);
+    expect(withoutProgress(events).map((e) => e.type)).toEqual(["usage", "interrupted"]);
   });
 });
 

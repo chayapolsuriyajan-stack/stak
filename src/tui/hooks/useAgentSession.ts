@@ -1,7 +1,8 @@
 import { useCallback, useRef, useState } from "react";
 import type { AgentContext } from "../../agent/loop.js";
 import { runTurn } from "../../agent/loop.js";
-import type { TurnUsage } from "../components/StatusBar.js";
+import type { TurnPhase } from "../../agent/types.js";
+import type { StatsLine } from "../formatStats.js";
 import type { DisplayMessage } from "../types.js";
 
 /**
@@ -10,13 +11,24 @@ import type { DisplayMessage } from "../types.js";
  */
 const FLUSH_INTERVAL_MS = 33;
 
+export interface LiveTurn {
+  stats: StatsLine;
+  phase: TurnPhase;
+  round: number;
+}
+
 export function useAgentSession(
   ctx: AgentContext,
   initialMessages: DisplayMessage[] = [],
 ) {
   const [messages, setMessages] = useState<DisplayMessage[]>(initialMessages);
   const [busy, setBusy] = useState(false);
-  const [usage, setUsage] = useState<TurnUsage | undefined>(undefined);
+  // Updated from the loop's "progress" events, which are already throttled
+  // at the source (only on phase transitions and round-end reconciliation,
+  // not per token) — no extra throttling needed here. Kept after the turn
+  // completes rather than cleared, so context usage stays visible at rest
+  // instead of vanishing the moment a turn ends.
+  const [live, setLive] = useState<LiveTurn | undefined>(undefined);
   const pendingText = useRef("");
   const flushTimer = useRef<NodeJS.Timeout | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -65,7 +77,7 @@ export function useAgentSession(
   const clear = useCallback(() => {
     ctx.history.length = 0;
     setMessages([]);
-    setUsage(undefined);
+    setLive(undefined);
   }, [ctx]);
 
   const sendMessage = useCallback(
@@ -129,12 +141,24 @@ export function useAgentSession(
               startFlushing();
               break;
 
-            case "usage":
-              setUsage({
-                inputTokens: event.inputTokens,
-                outputTokens: event.outputTokens,
-                elapsedMs: event.elapsedMs,
+            case "progress":
+              setLive({
+                stats: {
+                  outputTokens: event.outputTokens,
+                  approx: event.approx,
+                  latestInputTokens: event.latestInputTokens,
+                  generatingMs: event.generatingMs,
+                },
+                phase: event.phase,
+                round: event.round,
               });
+              break;
+
+            case "usage":
+              // The final progress event (round-end reconciliation of the
+              // last round) already carries these fully authoritative
+              // totals, so there's nothing further to merge in here beyond
+              // what "progress" already set.
               break;
 
             case "turn-complete":
@@ -154,5 +178,5 @@ export function useAgentSession(
     abortRef.current?.abort();
   }, []);
 
-  return { messages, busy, sendMessage, append, clear, interrupt, usage };
+  return { messages, busy, sendMessage, append, clear, interrupt, live };
 }

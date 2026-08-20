@@ -144,6 +144,12 @@ export class OllamaProvider implements Provider {
             type: "usage",
             inputTokens: chunk.prompt_eval_count ?? 0,
             outputTokens: chunk.eval_count ?? 0,
+            // eval_duration is nanoseconds and covers generation only, not
+            // the tool-execution time that would otherwise contaminate a
+            // wall-clock tok/s figure.
+            ...(chunk.eval_duration !== undefined
+              ? { generatingMs: chunk.eval_duration / 1e6 }
+              : {}),
           };
         }
 

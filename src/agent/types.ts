@@ -34,6 +34,11 @@ export interface Message {
   content: ContentBlock[];
 }
 
+/** What the agent is doing right now, for a live "phase" readout. A tool
+ * name rather than a bare string so a future variant (M4 adds "thinking")
+ * can't be confused with an in-progress tool call. */
+export type TurnPhase = "waiting" | "generating" | { tool: string };
+
 /** Events emitted by the agent loop as a turn progresses. */
 export type AgentEvent =
   | { type: "text-delta"; text: string }
@@ -45,7 +50,27 @@ export type AgentEvent =
       output: string;
       isError: boolean;
     }
-  | { type: "usage"; inputTokens: number; outputTokens: number; elapsedMs: number }
+  | {
+      type: "usage";
+      inputTokens: number;
+      outputTokens: number;
+      elapsedMs: number;
+      /** Generation time only, excluding tool execution — the honest
+       * denominator for tok/s, unlike elapsedMs which includes it. */
+      generatingMs: number;
+    }
+  /** A live snapshot mid-turn: output tokens seen so far (possibly a live
+   * estimate — see `approx`), the phase, and which round this is. Emitted
+   * on phase transitions, not per token. */
+  | {
+      type: "progress";
+      phase: TurnPhase;
+      round: number;
+      outputTokens: number;
+      approx: boolean;
+      latestInputTokens: number;
+      generatingMs: number;
+    }
   /** The final reply was cut off by the model's output/context limit, not a
    * natural stop — the visible text is incomplete. */
   | { type: "truncated" }

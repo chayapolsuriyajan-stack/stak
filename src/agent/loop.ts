@@ -1,4 +1,5 @@
 import type { Provider, StopReason } from "../providers/types.js";
+import { TurnStats } from "./turnStats.js";
 import type { AgentEvent, ContentBlock, Message } from "./types.js";
 import { userText } from "./types.js";
 
@@ -39,19 +40,45 @@ export async function* runTurn(
   append(ctx, userText(input));
 
   const turnStart = Date.now();
-  // Each round trip is a distinct billed call, so both figures sum across the
-  // whole turn rather than reflecting just the final round.
-  let totalInputTokens = 0;
-  let totalOutputTokens = 0;
+  const stats = new TurnStats();
+
+  // Every exit routes through here so a `usage` event — and the tokens/time
+  // already spent — is never silently dropped on an abort, a provider
+  // error, or hitting MAX_ITERATIONS the way it was before this existed.
+  function* endTurn(terminal: AgentEvent): Generator<AgentEvent> {
+    const usage = stats.finalUsage();
+    yield {
+      type: "usage",
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      elapsedMs: Date.now() - turnStart,
+      generatingMs: usage.generatingMs,
+    };
+    yield terminal;
+  }
+
+  function* progress(): Generator<AgentEvent> {
+    yield { type: "progress", ...stats.snapshot() };
+  }
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-    if (signal?.aborted) return yield interrupted();
+    if (signal?.aborted) return yield* endTurn(interrupted());
+
+    stats.setRound(iteration + 1);
+    yield* progress();
+
     const assistantBlocks: ContentBlock[] = [];
     const toolCalls: { id: string; name: string; input: unknown }[] = [];
     let text = "";
-    let failed = false;
+    let providerError: Error | undefined;
     let stopReason: StopReason = "end_turn";
+    let generating = false;
+    let roundUsage: { inputTokens: number; outputTokens: number; generatingMs?: number } = {
+      inputTokens: 0,
+      outputTokens: 0,
+    };
 
+    const roundStart = Date.now();
     const stream = ctx.provider.streamChat({
       model: ctx.model,
       systemPrompt: ctx.systemPrompt,
@@ -62,11 +89,17 @@ export async function* runTurn(
     for await (const event of stream) {
       // Stop consuming the stream promptly rather than after the model has
       // finished producing a response the user no longer wants.
-      if (signal?.aborted) return yield interrupted();
+      if (signal?.aborted) return yield* endTurn(interrupted());
 
       switch (event.type) {
         case "text-delta":
           text += event.text;
+          stats.recordTextDelta(event.text);
+          if (!generating) {
+            generating = true;
+            stats.setPhase("generating");
+            yield* progress();
+          }
           yield { type: "text-delta", text: event.text };
           break;
 
@@ -75,13 +108,20 @@ export async function* runTurn(
           break;
 
         case "usage":
-          totalInputTokens += event.inputTokens;
-          totalOutputTokens += event.outputTokens;
+          roundUsage = {
+            inputTokens: event.inputTokens,
+            outputTokens: event.outputTokens,
+            ...(event.generatingMs !== undefined
+              ? { generatingMs: event.generatingMs }
+              : {}),
+          };
           break;
 
         case "error":
-          failed = true;
-          yield { type: "error", error: event.error };
+          // Captured rather than yielded here: the terminal "error" event
+          // must come after "usage", same as every other exit, so it goes
+          // through endTurn below instead of being emitted inline.
+          providerError = event.error;
           break;
 
         case "message-done":
@@ -93,7 +133,12 @@ export async function* runTurn(
       }
     }
 
-    if (failed) return;
+    if (providerError) {
+      return yield* endTurn({ type: "error", error: providerError });
+    }
+
+    stats.recordRoundUsage(roundUsage, Date.now() - roundStart);
+    yield* progress();
 
     if (text !== "") assistantBlocks.push({ type: "text", text });
     for (const call of toolCalls) {
@@ -116,14 +161,7 @@ export async function* runTurn(
       // sign of — the response just stops mid-thought.
       if (stopReason === "max_tokens") yield { type: "truncated" };
 
-      yield {
-        type: "usage",
-        inputTokens: totalInputTokens,
-        outputTokens: totalOutputTokens,
-        elapsedMs: Date.now() - turnStart,
-      };
-      yield { type: "turn-complete" };
-      return;
+      return yield* endTurn({ type: "turn-complete" });
     }
 
     // Tool results go back as a single user message — both Anthropic and
@@ -132,7 +170,10 @@ export async function* runTurn(
     const resultBlocks: ContentBlock[] = [];
 
     for (const call of toolCalls) {
-      if (signal?.aborted) return yield interrupted();
+      if (signal?.aborted) return yield* endTurn(interrupted());
+
+      stats.setPhase({ tool: call.name });
+      yield* progress();
 
       yield {
         type: "tool-call-start",
@@ -167,12 +208,12 @@ export async function* runTurn(
     append(ctx, { role: "user", content: resultBlocks });
   }
 
-  yield {
+  yield* endTurn({
     type: "error",
     error: new Error(
       `Stopped after ${MAX_ITERATIONS} tool-call rounds without a final response.`,
     ),
-  };
+  });
 }
 
 function append(ctx: AgentContext, message: Message): void {

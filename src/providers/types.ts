@@ -31,7 +31,15 @@ export type ProviderStreamEvent =
   | { type: "text-delta"; text: string }
   | { type: "tool-call-delta"; id: string; name?: string; argsFragment?: string }
   | { type: "tool-call-done"; id: string; name: string; args: unknown }
-  | { type: "usage"; inputTokens: number; outputTokens: number }
+  | {
+      type: "usage";
+      inputTokens: number;
+      outputTokens: number;
+      /** The provider's own generation time in ms, when it reports one
+       * (e.g. Ollama's eval_duration) — excludes queueing/prompt-eval, so
+       * it's preferred over a wall-clock measurement when available. */
+      generatingMs?: number;
+    }
   | { type: "message-done"; stopReason: StopReason }
   | { type: "error"; error: Error };
 

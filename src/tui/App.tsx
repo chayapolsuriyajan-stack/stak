@@ -1,6 +1,7 @@
 import { Box, useApp, useInput, useStdout } from "ink";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AgentContext } from "../agent/loop.js";
+import type { ModelInfoCache } from "../agent/modelInfo.js";
 import type { CommandRegistry } from "../commands/dispatch.js";
 import { isCommand } from "../commands/dispatch.js";
 import type { CommandOutcome } from "../commands/types.js";
@@ -31,6 +32,9 @@ export interface AppProps {
    * leaving plan mode keeps the model's instructions in sync with what the
    * tools will actually let it do. */
   systemPromptFor?: (planMode: boolean) => string;
+  /** Shared across the process so a repeated /model switch back to a
+   * previously-seen model doesn't re-query the provider. */
+  modelInfoCache?: ModelInfoCache;
 }
 
 export function App({
@@ -42,10 +46,11 @@ export function App({
   initialMessages,
   onNewSession,
   systemPromptFor,
+  modelInfoCache,
 }: AppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
-  const { messages, busy, sendMessage, append, clear, interrupt, usage } = useAgentSession(
+  const { messages, busy, sendMessage, append, clear, interrupt, live } = useAgentSession(
     ctx,
     initialMessages,
   );
@@ -53,6 +58,20 @@ export function App({
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<PermissionMode>(permissions.getMode());
   const [model, setModel] = useState(ctx.model);
+  const [contextLength, setContextLength] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    // Fire-and-forget: modelInfo() already fails soft to {}, and the bar
+    // simply omits the context segment until (or unless) this resolves —
+    // it must never delay the first prompt.
+    void modelInfoCache?.get(ctx.provider, model).then((info) => {
+      if (!cancelled) setContextLength(info.contextLength);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ctx.provider, model, modelInfoCache]);
   // Bumped on /clear and remounted onto <MessageList>'s key so Ink's Static
   // resets its printed-count and the banner reprints on a genuinely blank
   // screen, instead of staying stuck at 1 item forever with the old
@@ -213,7 +232,10 @@ export function App({
         model={model}
         busy={busy}
         hint={`enter send · shift+tab ${mode}`}
-        usage={usage}
+        stats={live?.stats}
+        contextLength={contextLength}
+        phase={live?.phase}
+        round={live?.round}
       />
     </Box>
   );

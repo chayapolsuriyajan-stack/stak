@@ -111,6 +111,14 @@ for await (const event of runTurn(ctx, prompt)) {
     case "truncated":
       process.stdout.write("\n[truncated — hit the context/output limit]\n");
       break;
+    case "progress": {
+      const phase =
+        typeof event.phase === "string" ? event.phase : `tool:${event.phase.tool}`;
+      process.stderr.write(
+        `[progress] round=${event.round} phase=${phase} out=${event.outputTokens}${event.approx ? "~" : ""}\n`,
+      );
+      break;
+    }
     case "error":
       process.stderr.write(`\nError: ${event.error.message}\n`);
       process.exitCode = 1;

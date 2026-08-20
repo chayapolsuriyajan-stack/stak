@@ -1,22 +1,38 @@
 import { Box, Text } from "ink";
 import Spinner from "ink-spinner";
+import type { TurnPhase } from "../../agent/types.js";
+import { formatPhaseLine, formatStatsLine, type StatsLine } from "../formatStats.js";
 import { ACCENT, MUTED } from "../theme.js";
-
-export interface TurnUsage {
-  inputTokens: number;
-  outputTokens: number;
-  elapsedMs: number;
-}
 
 export interface StatusBarProps {
   provider: string;
   model: string;
   busy: boolean;
   hint?: string;
-  usage?: TurnUsage;
+  /** The last-known live/final stats snapshot — kept and shown even once
+   * idle, so context usage stays visible between turns rather than
+   * vanishing the moment a turn completes. */
+  stats?: StatsLine;
+  /** Undefined until the model's context limit is known (or never becomes
+   * known, e.g. an unrecognized Anthropic/OpenAI model) — the context
+   * segment is omitted entirely in that case rather than guessing. */
+  contextLength?: number;
+  /** Only meaningful while busy; the phase/round readout that replaces the
+   * generic "working…" hint. */
+  phase?: TurnPhase;
+  round?: number;
 }
 
-export function StatusBar({ provider, model, busy, hint, usage }: StatusBarProps) {
+export function StatusBar({
+  provider,
+  model,
+  busy,
+  hint,
+  stats,
+  contextLength,
+  phase,
+  round,
+}: StatusBarProps) {
   return (
     <Box justifyContent="space-between" paddingX={1}>
       <Text color={MUTED}>
@@ -25,29 +41,23 @@ export function StatusBar({ provider, model, busy, hint, usage }: StatusBarProps
             <Text color={ACCENT}>
               <Spinner type="dots" />
             </Text>
-            <Text color={MUTED}> working… esc to interrupt</Text>
+            <Text color={MUTED}>
+              {" "}
+              {phase !== undefined && round !== undefined
+                ? formatPhaseLine(phase, round)
+                : "working… esc to interrupt"}
+            </Text>
           </>
         ) : (
           (hint ?? "enter send")
         )}
       </Text>
       <Box gap={2}>
-        {usage && <Text color={MUTED}>{formatUsage(usage)}</Text>}
+        {stats && <Text color={MUTED}>{formatStatsLine(stats, contextLength)}</Text>}
         <Text color={MUTED}>
           {provider} {model}
         </Text>
       </Box>
     </Box>
   );
-}
-
-function formatUsage({ inputTokens, outputTokens, elapsedMs }: TurnUsage): string {
-  const total = inputTokens + outputTokens;
-  const seconds = elapsedMs / 1000;
-  // Sub-second turns (a cached or trivial reply) would otherwise divide by a
-  // near-zero duration and print a meaningless spike.
-  const tokensPerSecond = seconds >= 0.1 ? outputTokens / seconds : 0;
-
-  const rate = tokensPerSecond > 0 ? ` · ${tokensPerSecond.toFixed(1)} tok/s` : "";
-  return `${total.toLocaleString()} tokens (${inputTokens.toLocaleString()} in, ${outputTokens.toLocaleString()} out)${rate}`;
 }
