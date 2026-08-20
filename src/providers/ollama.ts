@@ -1,5 +1,6 @@
 import { Ollama } from "ollama";
 import type { Message } from "../agent/types.js";
+import { createThinkTagSplitter } from "./thinkTags.js";
 import type {
   ChatRequest,
   ModelInfo,
@@ -43,7 +44,12 @@ function toOllamaMessages(history: Message[]): OllamaMessage[] {
           });
           break;
         case "tool_result":
-          // Emitted separately below so it lands in its own tool message.
+        case "thinking":
+          // Tool results are emitted separately below so they land in their
+          // own message. Thinking is dropped entirely: it must never be
+          // replayed back to the model as if it were prior assistant
+          // speech, and a local model re-reading its own past reasoning
+          // verbatim is not something it was trained to expect.
           break;
       }
     }
@@ -84,6 +90,10 @@ export interface OllamaProviderOptions {
 export class OllamaProvider implements Provider {
   readonly name = "ollama" as const;
   private client: Ollama;
+  // Capability lookups are cached per model rather than per streamChat call
+  // — every round trip in a turn would otherwise re-query show() just to
+  // decide whether to set `think`.
+  private capabilityCache = new Map<string, Promise<string[]>>();
 
   constructor(options: OllamaProviderOptions = {}) {
     this.client = new Ollama({
@@ -110,12 +120,32 @@ export class OllamaProvider implements Provider {
     }
   }
 
+  private capabilities(model: string): Promise<string[]> {
+    let pending = this.capabilityCache.get(model);
+    if (!pending) {
+      pending = this.client
+        .show({ model })
+        .then((show) => show.capabilities ?? [])
+        .catch(() => []);
+      this.capabilityCache.set(model, pending);
+    }
+    return pending;
+  }
+
   async *streamChat(req: ChatRequest): AsyncGenerator<ProviderStreamEvent> {
     let callIndex = 0;
     let sawToolCall = false;
     let doneReason: string | undefined;
+    // Runs on the content channel unconditionally, native thinking or not:
+    // some Qwen builds inline <think> tags in `content` even with `think`
+    // requested, so this is the safety net that makes both paths converge
+    // rather than something only the fallback needs. Cheap passthrough when
+    // no tags are present.
+    const tagSplitter = createThinkTagSplitter();
 
     try {
+      const supportsThinking = (await this.capabilities(req.model)).includes("thinking");
+
       const messages: OllamaMessage[] = [
         { role: "system", content: req.systemPrompt },
         ...toOllamaMessages(req.history),
@@ -126,12 +156,22 @@ export class OllamaProvider implements Provider {
         messages: messages as never,
         stream: true,
         ...(req.tools.length > 0 ? { tools: toOllamaTools(req.tools) } : {}),
+        ...(supportsThinking && req.options?.think ? { think: true } : {}),
       });
 
       for await (const chunk of stream) {
+        // The native field, when the model/server actually populate it —
+        // already pure reasoning text, so it bypasses the tag splitter.
+        const nativeThinking = chunk.message?.thinking;
+        if (nativeThinking) {
+          yield { type: "thinking-delta", text: nativeThinking };
+        }
+
         const content = chunk.message?.content;
         if (content) {
-          yield { type: "text-delta", text: content };
+          const { thinking, text } = tagSplitter.push(content);
+          if (thinking) yield { type: "thinking-delta", text: thinking };
+          if (text) yield { type: "text-delta", text };
         }
 
         if (chunk.done) {
@@ -171,6 +211,10 @@ export class OllamaProvider implements Provider {
           }
         }
       }
+
+      const final = tagSplitter.end();
+      if (final.thinking) yield { type: "thinking-delta", text: final.thinking };
+      if (final.text) yield { type: "text-delta", text: final.text };
 
       yield { type: "message-done", stopReason: toStopReason(doneReason, sawToolCall) };
     } catch (error) {

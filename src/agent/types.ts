@@ -25,7 +25,17 @@ export interface ToolResultBlock {
   isError?: boolean;
 }
 
-export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock;
+/** Reasoning text, kept distinct from TextBlock since it must never be
+ * replayed back to a provider as if it were assistant speech — every
+ * adapter drops these on the way out. Persisted to session JSONL so
+ * --resume can still redisplay it, even though it never round-trips
+ * through a live conversation. */
+export interface ThinkingBlock {
+  type: "thinking";
+  text: string;
+}
+
+export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock | ThinkingBlock;
 
 export type Role = "user" | "assistant";
 
@@ -35,13 +45,14 @@ export interface Message {
 }
 
 /** What the agent is doing right now, for a live "phase" readout. A tool
- * name rather than a bare string so a future variant (M4 adds "thinking")
- * can't be confused with an in-progress tool call. */
-export type TurnPhase = "waiting" | "generating" | { tool: string };
+ * name rather than a bare string so it can't be confused with an
+ * in-progress tool call. */
+export type TurnPhase = "waiting" | "generating" | "thinking" | { tool: string };
 
 /** Events emitted by the agent loop as a turn progresses. */
 export type AgentEvent =
   | { type: "text-delta"; text: string }
+  | { type: "thinking-delta"; text: string }
   | { type: "tool-call-start"; id: string; name: string; input: unknown }
   | {
       type: "tool-call-result";

@@ -10,26 +10,39 @@ import type {
   ToolDefinition,
 } from "./types.js";
 
-/** Anthropic's block shapes line up almost 1:1 with our internal format. */
+/**
+ * Anthropic's block shapes line up almost 1:1 with our internal format.
+ * flatMap rather than map since a thinking block is dropped outright — it
+ * must never be replayed back as if it were prior assistant speech, and
+ * Anthropic specifically would reject an unsigned thinking block outright
+ * if one were sent (its own extended-thinking blocks carry a signature this
+ * adapter never generates, since it doesn't request native thinking).
+ */
 function toAnthropicContent(blocks: ContentBlock[]): Anthropic.ContentBlockParam[] {
-  return blocks.map((block): Anthropic.ContentBlockParam => {
+  return blocks.flatMap((block): Anthropic.ContentBlockParam[] => {
     switch (block.type) {
       case "text":
-        return { type: "text", text: block.text };
+        return [{ type: "text", text: block.text }];
       case "tool_use":
-        return {
-          type: "tool_use",
-          id: block.id,
-          name: block.name,
-          input: block.input as Record<string, unknown>,
-        };
+        return [
+          {
+            type: "tool_use",
+            id: block.id,
+            name: block.name,
+            input: block.input as Record<string, unknown>,
+          },
+        ];
       case "tool_result":
-        return {
-          type: "tool_result",
-          tool_use_id: block.toolUseId,
-          content: block.content,
-          is_error: block.isError ?? false,
-        };
+        return [
+          {
+            type: "tool_result",
+            tool_use_id: block.toolUseId,
+            content: block.content,
+            is_error: block.isError ?? false,
+          },
+        ];
+      case "thinking":
+        return [];
     }
   });
 }

@@ -14,6 +14,7 @@ export interface StatsLine {
 export function formatPhase(phase: TurnPhase): string {
   if (phase === "waiting") return "waiting for the model";
   if (phase === "generating") return "generating";
+  if (phase === "thinking") return "thinking";
   return phase.tool;
 }
 

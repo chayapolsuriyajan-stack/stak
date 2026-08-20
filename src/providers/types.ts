@@ -11,11 +11,20 @@ export interface ToolDefinition {
   jsonSchema: Record<string, unknown>;
 }
 
+export interface ChatOptions {
+  /** Requests native reasoning output where the provider supports it
+   * (Ollama's think param). Adapters that have no such mechanism ignore
+   * this; a model that inlines reasoning as `<think>` tags regardless is
+   * handled separately via tag-stripping, not this flag. */
+  think?: boolean;
+}
+
 export interface ChatRequest {
   model: string;
   systemPrompt: string;
   history: Message[];
   tools: ToolDefinition[];
+  options?: ChatOptions;
 }
 
 export type StopReason = "end_turn" | "tool_use" | "max_tokens" | "error";
@@ -29,6 +38,7 @@ export type StopReason = "end_turn" | "tool_use" | "max_tokens" | "error";
  */
 export type ProviderStreamEvent =
   | { type: "text-delta"; text: string }
+  | { type: "thinking-delta"; text: string }
   | { type: "tool-call-delta"; id: string; name?: string; argsFragment?: string }
   | { type: "tool-call-done"; id: string; name: string; args: unknown }
   | {
