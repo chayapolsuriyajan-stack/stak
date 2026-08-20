@@ -1,4 +1,4 @@
-import type { Provider } from "../providers/types.js";
+import type { Provider, StopReason } from "../providers/types.js";
 import type { AgentEvent, ContentBlock, Message } from "./types.js";
 import { userText } from "./types.js";
 
@@ -50,6 +50,7 @@ export async function* runTurn(
     const toolCalls: { id: string; name: string; input: unknown }[] = [];
     let text = "";
     let failed = false;
+    let stopReason: StopReason = "end_turn";
 
     const stream = ctx.provider.streamChat({
       model: ctx.model,
@@ -83,9 +84,12 @@ export async function* runTurn(
           yield { type: "error", error: event.error };
           break;
 
-        // `tool-call-delta` is for incremental UI feedback only; the loop acts
-        // on the completed call. `message-done` needs no handling here since
-        // stream exhaustion already tells us the turn ended.
+        case "message-done":
+          stopReason = event.stopReason;
+          break;
+
+        // `tool-call-delta` is for incremental UI feedback only; the loop
+        // acts on the completed call.
       }
     }
 
@@ -106,6 +110,12 @@ export async function* runTurn(
     }
 
     if (toolCalls.length === 0) {
+      // A tool-call round hitting the limit just means "call more tools next
+      // round" and self-corrects; a *final* reply hitting it means the text
+      // on screen is genuinely incomplete, which the model gives no other
+      // sign of — the response just stops mid-thought.
+      if (stopReason === "max_tokens") yield { type: "truncated" };
+
       yield {
         type: "usage",
         inputTokens: totalInputTokens,

@@ -148,6 +148,62 @@ describe("tool calls", () => {
   });
 });
 
+describe("truncation", () => {
+  test("a final reply that hits the token/context limit is flagged", async () => {
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "text-delta", text: "This response got cut off mid" },
+          { type: "message-done", stopReason: "max_tokens" },
+        ],
+      ]),
+    );
+
+    const events = await collect(runTurn(ctx, "hi"));
+
+    expect(events.map((e) => e.type)).toEqual([
+      "text-delta",
+      "truncated",
+      "usage",
+      "turn-complete",
+    ]);
+  });
+
+  test("a normal end_turn reply is not flagged", async () => {
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "text-delta", text: "Done." },
+          { type: "message-done", stopReason: "end_turn" },
+        ],
+      ]),
+    );
+
+    const events = await collect(runTurn(ctx, "hi"));
+
+    expect(events.some((e) => e.type === "truncated")).toBe(false);
+  });
+
+  test("hitting the limit mid tool-call round is not flagged as a truncated reply", async () => {
+    // The round continues (more tool calls follow), so nothing here is a cut-off
+    // final answer.
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "tool-call-done", id: "t1", name: "read", args: {} },
+          { type: "message-done", stopReason: "max_tokens" },
+        ],
+        [{ type: "message-done", stopReason: "end_turn" }],
+      ]),
+      { executeTool: async () => ({ output: "ok", isError: false }) },
+    );
+
+    const events = await collect(runTurn(ctx, "go"));
+
+    expect(events.some((e) => e.type === "truncated")).toBe(false);
+  });
+});
+
 describe("usage", () => {
   test("sums tokens across every round trip in the turn", async () => {
     const ctx = context(

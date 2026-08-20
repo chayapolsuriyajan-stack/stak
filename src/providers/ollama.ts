@@ -98,6 +98,7 @@ export class OllamaProvider implements Provider {
   async *streamChat(req: ChatRequest): AsyncGenerator<ProviderStreamEvent> {
     let callIndex = 0;
     let sawToolCall = false;
+    let doneReason: string | undefined;
 
     try {
       const messages: OllamaMessage[] = [
@@ -119,6 +120,11 @@ export class OllamaProvider implements Provider {
         }
 
         if (chunk.done) {
+          // "length" means num_predict or the context window was hit and the
+          // response was cut off mid-generation, not that the model chose to
+          // stop — the loop needs this distinction to tell the user rather
+          // than silently presenting a truncated reply as a finished one.
+          doneReason = chunk.done_reason;
           yield {
             type: "usage",
             inputTokens: chunk.prompt_eval_count ?? 0,
@@ -145,8 +151,7 @@ export class OllamaProvider implements Provider {
         }
       }
 
-      const stopReason: StopReason = sawToolCall ? "tool_use" : "end_turn";
-      yield { type: "message-done", stopReason };
+      yield { type: "message-done", stopReason: toStopReason(doneReason, sawToolCall) };
     } catch (error) {
       yield { type: "error", error: asError(error) };
     }
@@ -171,4 +176,18 @@ function normalizeArgs(args: unknown): unknown {
 
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
+}
+
+/**
+ * "length" means num_predict or the context window was hit and the response
+ * was cut off mid-generation, not that the model chose to stop — the loop
+ * needs this distinction to tell the user rather than silently presenting a
+ * truncated reply as a finished one.
+ */
+export function toStopReason(
+  doneReason: string | undefined,
+  sawToolCall: boolean,
+): StopReason {
+  if (sawToolCall) return "tool_use";
+  return doneReason === "length" ? "max_tokens" : "end_turn";
 }

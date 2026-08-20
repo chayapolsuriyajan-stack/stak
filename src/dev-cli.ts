@@ -102,6 +102,9 @@ for await (const event of runTurn(ctx, prompt)) {
     case "interrupted":
       process.stdout.write("\n[interrupted]\n");
       break;
+    case "truncated":
+      process.stdout.write("\n[truncated — hit the context/output limit]\n");
+      break;
     case "error":
       process.stderr.write(`\nError: ${event.error.message}\n`);
       process.exitCode = 1;

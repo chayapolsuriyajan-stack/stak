@@ -46,6 +46,9 @@ export type AgentEvent =
       isError: boolean;
     }
   | { type: "usage"; inputTokens: number; outputTokens: number; elapsedMs: number }
+  /** The final reply was cut off by the model's output/context limit, not a
+   * natural stop — the visible text is incomplete. */
+  | { type: "truncated" }
   | { type: "turn-complete" }
   | { type: "interrupted" }
   | { type: "error"; error: Error };

@@ -120,6 +120,15 @@ export function useAgentSession(
               startFlushing();
               break;
 
+            case "truncated":
+              stopFlushing();
+              append({
+                kind: "notice",
+                text: "⚠ Response cut off — hit the context/output limit. Ask it to continue, or raise num_ctx in the Modelfile.",
+              });
+              startFlushing();
+              break;
+
             case "usage":
               setUsage({
                 inputTokens: event.inputTokens,

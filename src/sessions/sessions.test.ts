@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import type { Message } from "../agent/types.js";
 import { assistantText, userText } from "../agent/types.js";
 import { toDisplayMessages } from "../tui/history.js";
-import { findLatestSession, loadSession } from "./resume.js";
+import { findLatestSession, findSessionById, listSessions, loadSession } from "./resume.js";
 import { SessionStore } from "./store.js";
 
 let cwd: string;
@@ -185,6 +185,86 @@ describe("resuming", () => {
 
     const final = await loadSession(first.filePath);
     expect(final?.history).toHaveLength(3);
+  });
+});
+
+describe("findSessionById", () => {
+  test("resolves an existing session by its id", async () => {
+    const session = store();
+    session.append(userText("hi"));
+    await session.flush();
+
+    const file = await findSessionById(session.sessionId, cwd);
+
+    expect(file).toBe(session.filePath);
+  });
+
+  test("returns nothing for an id that does not exist", async () => {
+    expect(await findSessionById("nonexistent-id", cwd)).toBeUndefined();
+  });
+});
+
+describe("listSessions", () => {
+  test("summarizes each session without materializing its full history", async () => {
+    const first = store();
+    first.append(userText("what is a linked list"));
+    first.append(assistantText("A linked list is..."));
+    await first.flush();
+
+    const summaries = await listSessions(cwd);
+
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]).toMatchObject({
+      sessionId: first.sessionId,
+      provider: "ollama",
+      model: "test-model",
+      messageCount: 2,
+      preview: "what is a linked list",
+    });
+  });
+
+  test("lists newest first", async () => {
+    const older = store();
+    older.append(userText("older"));
+    await older.flush();
+
+    const newer = store();
+    newer.append(userText("newer"));
+    await newer.flush();
+    const later = new Date(Date.now() + 10_000);
+    await fs.utimes(newer.filePath, later, later);
+
+    const summaries = await listSessions(cwd);
+
+    expect(summaries.map((s) => s.preview)).toEqual(["newer", "older"]);
+  });
+
+  test("truncates a long preview", async () => {
+    const session = store();
+    session.append(userText("x".repeat(200)));
+    await session.flush();
+
+    const [summary] = await listSessions(cwd);
+
+    expect(summary?.preview.length).toBeLessThanOrEqual(72);
+    expect(summary?.preview.endsWith("...")).toBe(true);
+  });
+
+  test("skips a session with no messages yet", async () => {
+    // A session file that only ever got the meta line, e.g. the process was
+    // killed before the first message flushed.
+    const dir = path.join(cwd, ".stak", "sessions");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, "empty.jsonl"),
+      `${JSON.stringify({ type: "meta", sessionId: "empty", provider: "ollama", model: "m", cwd, startedAt: new Date().toISOString() })}\n`,
+    );
+
+    expect(await listSessions(cwd)).toEqual([]);
+  });
+
+  test("returns an empty list when the project has no sessions", async () => {
+    expect(await listSessions(cwd)).toEqual([]);
   });
 });
 
