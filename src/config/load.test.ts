@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { MODE_CYCLE } from "../permissions/manager.js";
 import { loadConfig } from "./load.js";
 
 let cwd: string;
@@ -105,5 +106,19 @@ describe("guardrails", () => {
     await writeProjectSettings({ permissionMode: "accept-edits" });
 
     expect((await loadConfig({ cwd })).permissionMode).toBe("accept-edits");
+  });
+
+  // Regression: PermissionManager persisted "plan" (added to MODE_CYCLE) before
+  // this validator was updated to accept it, so entering plan mode and
+  // relaunching silently dropped back to "ask" with a spurious warning. Every
+  // mode in MODE_CYCLE must round-trip, not just the ones a hand-written list
+  // happens to remember.
+  test.each(MODE_CYCLE)("permission mode %s round-trips through project settings", async (mode) => {
+    await writeProjectSettings({ permissionMode: mode });
+
+    const config = await loadConfig({ cwd });
+
+    expect(config.permissionMode).toBe(mode);
+    expect(config.warnings).toEqual([]);
   });
 });

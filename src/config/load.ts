@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { MODE_CYCLE } from "../permissions/manager.js";
 import type { ProviderName } from "../providers/types.js";
 import { globalConfigFile, projectSettingsFile } from "./paths.js";
 import type {
@@ -90,9 +91,10 @@ function coerceMode(
   warnings: string[],
 ): PermissionMode {
   if (value === undefined) return "ask";
-  if (value === "ask" || value === "accept-edits" || value === "auto-bypass") {
-    return value;
-  }
+  // Derived from MODE_CYCLE rather than a hand-written literal union, so a
+  // future mode added there can't silently fail to round-trip through
+  // persisted project settings the way "plan" briefly did.
+  if ((MODE_CYCLE as string[]).includes(value)) return value as PermissionMode;
   warnings.push(`Unknown permission mode "${value}", falling back to ask.`);
   return "ask";
 }
