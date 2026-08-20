@@ -19,7 +19,9 @@ npm link
 ```bash
 stak                       # start a session in the current directory
 stak --continue            # resume the most recent session here
-stak --model qwen3.8-q3xl # override the model for this run
+stak --resume              # pick a past session interactively
+stak --resume <id>         # resume one specific session directly
+stak --model qwen3.8-q3xl  # override the model for this run
 stak --provider anthropic  # override the provider
 ```
 
@@ -73,12 +75,20 @@ Every command and file change passes a permission gate before it runs.
 
 | Mode | Behaviour |
 | --- | --- |
+| `plan` | read-only tools work freely; every edit and command is refused outright, no prompt |
 | `ask` | prompts before edits and commands (default) |
 | `accept-edits` | edits run unattended, commands still prompt |
 | `auto-bypass` | nothing prompts |
 
 Commands stay gated in `accept-edits` because an edit leaves a diff you can
 read and revert, and an arbitrary shell command does not.
+
+**Plan mode** is for exploring a change before committing to it. The model is
+told plainly that write/edit/bash are disabled and to research with
+read/grep/glob/Skill, then present a concrete plan and stop — it won't retry
+blocked tools or nag you to switch modes. Cycling to any other mode (`shift+tab`
+or `/permissions ask`) is how you approve the plan; send a follow-up message
+like "go ahead" and it executes normally from there.
 
 ## Commands and skills
 
@@ -113,11 +123,24 @@ exists; it loads one by calling the `Skill` tool, and the instructions come back
 as the tool result. That works on any provider with native tool-calling, with no
 protocol support of its own.
 
+## When a response gets cut off
+
+A reply cut off by the model's context/output limit looks identical to a
+normal finished reply unless something flags it — stak checks each
+provider's stop reason and shows "⚠ Response cut off" when that happens,
+rather than silently presenting an incomplete answer as done. If you're
+hitting this often, `num_ctx` in your Modelfile is likely too small for the
+task at hand; raising it costs VRAM headroom (more context needs a bigger
+KV cache), so there's a real tradeoff against how much of the model can stay
+resident on a GPU with limited memory.
+
 ## Sessions
 
 Conversations append to `.stak/sessions/<id>.jsonl` as they happen, so an
 interrupted session still leaves a resumable transcript. `--continue` reopens
-the most recent one and keeps writing to the same file.
+the most recent one; `--resume` with no id shows a picker (age, model, message
+count, first-message preview) and `--resume <id>` loads one directly. All
+three keep writing to the same file rather than starting a new one.
 
 ## Development
 

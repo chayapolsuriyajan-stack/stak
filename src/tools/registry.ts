@@ -86,10 +86,7 @@ export class ToolRegistry {
     });
 
     if (decision === "denied") {
-      return {
-        output: `The user declined to run ${tool.name}. Ask how they would like to proceed instead of retrying.`,
-        isError: true,
-      };
+      return { output: this.permissions.denialReason(tool.name), isError: true };
     }
 
     try {

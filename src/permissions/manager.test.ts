@@ -74,12 +74,44 @@ test("denies risky calls when no prompter can ask the user", async () => {
   expect(await manager.check(request("read-only"))).toBe("approved");
 });
 
-test("cycles through the modes in order", async () => {
-  const manager = new PermissionManager("ask", cwd);
+test("cycles through the modes strictest to most permissive, then wraps", async () => {
+  const manager = new PermissionManager("plan", cwd);
 
+  expect(await manager.cycleMode()).toBe("ask");
   expect(await manager.cycleMode()).toBe("accept-edits");
   expect(await manager.cycleMode()).toBe("auto-bypass");
-  expect(await manager.cycleMode()).toBe("ask");
+  expect(await manager.cycleMode()).toBe("plan");
+});
+
+describe("plan mode", () => {
+  test("denies edits and commands without ever prompting", async () => {
+    const manager = new PermissionManager("plan", cwd);
+    const prompter = vi.fn();
+    manager.setPrompter(prompter);
+
+    expect(await manager.check(request("edit"))).toBe("denied");
+    expect(await manager.check(request("bash"))).toBe("denied");
+    expect(prompter).not.toHaveBeenCalled();
+  });
+
+  test("read-only tools still work normally", async () => {
+    const manager = new PermissionManager("plan", cwd);
+
+    expect(await manager.check(request("read-only"))).toBe("approved");
+  });
+
+  test("denial reason explains plan mode rather than blaming the user", async () => {
+    const manager = new PermissionManager("plan", cwd);
+
+    expect(manager.denialReason("write")).toContain("plan mode");
+    expect(manager.denialReason("write")).not.toContain("declined");
+  });
+});
+
+test("a non-plan denial reason reads as the user declining", async () => {
+  const manager = new PermissionManager("ask", cwd);
+
+  expect(manager.denialReason("bash")).toContain("declined");
 });
 
 test("persists the mode to the project, not the user's home", async () => {

@@ -26,6 +26,10 @@ export interface AppProps {
   initialMessages?: DisplayMessage[];
   /** Starts a new session file, used by /clear. */
   onNewSession?: () => void;
+  /** Rebuilds the system prompt for a given plan-mode state, so entering or
+   * leaving plan mode keeps the model's instructions in sync with what the
+   * tools will actually let it do. */
+  systemPromptFor?: (planMode: boolean) => string;
 }
 
 export function App({
@@ -35,6 +39,7 @@ export function App({
   version,
   initialMessages,
   onNewSession,
+  systemPromptFor,
 }: AppProps) {
   const { exit } = useApp();
   const { messages, busy, sendMessage, append, clear, interrupt, usage } = useAgentSession(
@@ -46,12 +51,17 @@ export function App({
   const [mode, setMode] = useState<PermissionMode>(permissions.getMode());
   const [model, setModel] = useState(ctx.model);
 
+  const applyMode = (next: PermissionMode) => {
+    setMode(next);
+    ctx.systemPrompt = systemPromptFor?.(next === "plan") ?? ctx.systemPrompt;
+  };
+
   useInput(
     (_char, key) => {
       // Shift+Tab cycles how much the agent may do without asking.
       if (key.tab && key.shift) {
         void permissions.cycleMode().then((next) => {
-          setMode(next);
+          applyMode(next);
           append({
             kind: "notice",
             text: `Permission mode: ${next} — ${MODE_LABELS[next]}`,
@@ -80,7 +90,7 @@ export function App({
         getPermissionMode: () => permissions.getMode(),
         setPermissionMode: async (next) => {
           await permissions.setMode(next as PermissionMode);
-          setMode(permissions.getMode());
+          applyMode(permissions.getMode());
           return permissions.getMode();
         },
         setModel: (next) => {

@@ -1,6 +1,12 @@
 import type { ProviderName } from "../providers/types.js";
 
-export type PermissionMode = "ask" | "accept-edits" | "auto-bypass";
+/**
+ * "plan" is the strictest mode: read-only tools stay available for research,
+ * but every edit and command is refused outright, with no prompt — the
+ * model is expected to describe what it would do instead. Switching to any
+ * other mode is how a proposed plan gets approved to actually run.
+ */
+export type PermissionMode = "plan" | "ask" | "accept-edits" | "auto-bypass";
 
 /** Shape of ~/.stak/config.json — the only file allowed to hold secrets. */
 export interface GlobalConfig {

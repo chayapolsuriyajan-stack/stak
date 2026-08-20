@@ -4,6 +4,9 @@ export interface SystemPromptOptions {
   cwd: string;
   /** Skill catalog entries, injected so the model knows what it can invoke. */
   skills?: { name: string; description: string }[];
+  /** True while write/edit/bash are all refused — steers the model toward
+   * research and a written plan instead of retrying blocked actions. */
+  planMode?: boolean;
 }
 
 export function buildSystemPrompt(options: SystemPromptOptions): string {
@@ -24,6 +27,16 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
       "# Available skills",
       "Invoke one with the Skill tool when the task matches its description.",
       ...options.skills.map((skill) => `- ${skill.name}: ${skill.description}`),
+    );
+  }
+
+  if (options.planMode) {
+    sections.push(
+      "",
+      "# Plan mode is active",
+      "The write, edit, and bash tools are disabled — calling them will fail. Use read, grep, glob, and Skill freely to research the task.",
+      "Once you understand what's needed, present a clear, concrete plan for what you would do and stop. Do not attempt the change yet.",
+      "The user reviews the plan and switches out of plan mode themselves when they want you to proceed — do not tell them to do this, and do not retry blocked tools waiting for that to happen.",
     );
   }
 

@@ -40,8 +40,14 @@ if (providerName === "anthropic") {
 }
 
 const cwd = process.cwd();
-// The harness has no UI to prompt with, so it runs unattended.
-const permissions = new PermissionManager("auto-bypass", cwd);
+// The harness has no UI to prompt with, so it defaults to unattended; set
+// STAK_PERMISSION_MODE to exercise plan/ask/accept-edits instead.
+const permissionMode = (process.env["STAK_PERMISSION_MODE"] ?? "auto-bypass") as
+  | "plan"
+  | "ask"
+  | "accept-edits"
+  | "auto-bypass";
+const permissions = new PermissionManager(permissionMode, cwd);
 const { skills } = await loadSkills(cwd);
 const tools = new ToolRegistry({
   cwd,
@@ -67,7 +73,7 @@ if (resumed) {
 const ctx = {
   provider,
   model,
-  systemPrompt: buildSystemPrompt({ cwd, skills }),
+  systemPrompt: buildSystemPrompt({ cwd, skills, planMode: permissionMode === "plan" }),
   history,
   tools: tools.definitions(),
   executeTool: (call: { id: string; name: string; input: unknown }) =>

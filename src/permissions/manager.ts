@@ -10,9 +10,13 @@ import type {
   PermissionRequest,
 } from "./types.js";
 
-export const MODE_CYCLE: PermissionMode[] = ["ask", "accept-edits", "auto-bypass"];
+// Strictest first: plan can't even be asked into running something, ask
+// prompts for everything risky, accept-edits trusts edits, auto-bypass
+// trusts everything.
+export const MODE_CYCLE: PermissionMode[] = ["plan", "ask", "accept-edits", "auto-bypass"];
 
 export const MODE_LABELS: Record<PermissionMode, string> = {
+  plan: "plan only — research freely, no edits or commands until approved",
   ask: "ask before edits and commands",
   "accept-edits": "auto-accept edits, ask for commands",
   "auto-bypass": "no prompts",
@@ -49,6 +53,12 @@ export class PermissionManager {
   }
 
   async check(request: PermissionRequest): Promise<PermissionDecision> {
+    if (request.riskTier === "read-only") return "approved";
+
+    // Plan mode never prompts for a risky call — there is nothing to ask,
+    // since acting at all is what plan mode exists to defer.
+    if (this.mode === "plan") return "denied";
+
     if (!this.requiresApproval(request.riskTier)) return "approved";
     if (!this.prompter) {
       // With no way to ask, denying is the safe default — the model gets told
@@ -56,6 +66,14 @@ export class PermissionManager {
       return "denied";
     }
     return this.prompter(request);
+  }
+
+  /** The message a denied tool call sees, tailored to why it was denied. */
+  denialReason(toolName: string): string {
+    if (this.mode === "plan") {
+      return `${toolName} is disabled while in plan mode. Describe this step as part of your plan instead of running it — the user switches out of plan mode to approve the plan and let you execute it.`;
+    }
+    return `The user declined to run ${toolName}. Ask how they would like to proceed instead of retrying.`;
   }
 
   private requiresApproval(tier: RiskTier): boolean {
@@ -69,6 +87,9 @@ export class PermissionManager {
         // an arbitrary shell command is not.
         return tier === "bash";
       case "ask":
+        return true;
+      case "plan":
+        // check() short-circuits plan mode before this is ever reached.
         return true;
     }
   }
