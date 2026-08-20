@@ -70,7 +70,9 @@ export const builtinCommands: Command[] = [
   {
     name: "permissions",
     description: "show or set the permission mode",
-    argumentHint: "[ask|accept-edits|auto-bypass]",
+    // Built from MODE_CYCLE so this can't drift out of sync with the actual
+    // valid modes the way the config-loading validator once did.
+    argumentHint: `[${MODE_CYCLE.join("|")}]`,
     source: "builtin",
     async run(ctx) {
       const requested = ctx.args.trim();

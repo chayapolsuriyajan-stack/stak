@@ -13,41 +13,31 @@ const WORDMARK = [
   "█████   ██   ██ ██ ██   ██",
 ];
 
-const COMMANDS: [string, string][] = [
-  ["/help", "show help"],
-  ["/sessions", "list sessions"],
-  ["/new", "start a new session"],
-  ["/model", "switch model"],
-  ["/permissions", "change permission mode"],
-  ["/exit", "exit the app"],
-];
-
 export interface SplashProps {
   version: string;
+  cwd: string;
+  provider: string;
+  model: string;
 }
 
-export function Splash({ version }: SplashProps) {
+/**
+ * Prints once at the head of scrollback, then scrolls away as messages
+ * append below it — this is a Static item (see App.tsx), not a
+ * conditionally-rendered screen, so it must stay compact rather than the
+ * full-height centered block a "welcome screen" would use.
+ */
+export function Splash({ version, cwd, provider, model }: SplashProps) {
   return (
-    <Box flexDirection="column" alignItems="center" paddingY={2}>
-      <Box flexDirection="column">
-        {WORDMARK.map((row, index) => (
-          <Text key={index} color={ACCENT} bold>
-            {row}
-          </Text>
-        ))}
-        <Box justifyContent="flex-end">
-          <Text color={MUTED}>v{version}</Text>
-        </Box>
-      </Box>
-
-      <Box flexDirection="column" marginTop={2}>
-        {COMMANDS.map(([name, description]) => (
-          <Text key={name}>
-            <Text color={ACCENT}>{name.padEnd(14)}</Text>
-            <Text color={MUTED}>{description}</Text>
-          </Text>
-        ))}
-      </Box>
+    <Box flexDirection="column" marginBottom={1}>
+      {WORDMARK.map((row, index) => (
+        <Text key={index} color={ACCENT} bold>
+          {row}
+        </Text>
+      ))}
+      <Text color={MUTED}>
+        v{version} · {provider} {model} · {cwd}
+      </Text>
+      <Text color={MUTED}>/help for commands · shift+tab permission mode</Text>
     </Box>
   );
 }

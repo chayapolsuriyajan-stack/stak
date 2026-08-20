@@ -1,27 +1,41 @@
 import { Box, Static, Text } from "ink";
-import type { DisplayMessage } from "../types.js";
+import type { TranscriptItem } from "../types.js";
 import { ACCENT, MUTED } from "../theme.js";
+import { summarizeToolCall } from "../toolSummary.js";
+import { Splash } from "./Splash.js";
 
 export interface MessageListProps {
-  /** Finished messages only — nothing here should change again. Rendered via
+  /** Finished items only — nothing here should change again. Rendered via
    * Ink's Static, which prints each item once to real terminal scrollback
    * and never touches those rows again, instead of re-drawing the whole
-   * history on every frame. */
-  messages: DisplayMessage[];
+   * history on every frame. The banner is always index 0. */
+  items: TranscriptItem[];
 }
 
-export function MessageList({ messages }: MessageListProps) {
+export function MessageList({ items }: MessageListProps) {
   return (
-    <Static items={messages}>
-      {(message, index) => <MessageItem key={index} message={message} />}
+    <Static items={items}>
+      {(item, index) => <MessageItem key={index} message={item} />}
     </Static>
   );
 }
 
 /** Exported so the live (still-updating) tail message can reuse the same
- * rendering outside of Static. */
-export function MessageItem({ message }: { message: DisplayMessage }) {
+ * rendering outside of Static. The live tail is always a DisplayMessage —
+ * the banner never streams — but this accepts the wider type since callers
+ * pass items straight from the same array. */
+export function MessageItem({ message }: { message: TranscriptItem }) {
   switch (message.kind) {
+    case "banner":
+      return (
+        <Splash
+          version={message.version}
+          cwd={message.cwd}
+          provider={message.provider}
+          model={message.model}
+        />
+      );
+
     case "user":
       return (
         <Box marginBottom={1}>
@@ -45,7 +59,7 @@ export function MessageItem({ message }: { message: DisplayMessage }) {
           <Text color="cyan">
             {"  ⚒ "}
             {message.name}
-            <Text color={MUTED}> {summarize(message.input)}</Text>
+            <Text color={MUTED}>({summarizeToolCall(message.name, message.input)})</Text>
           </Text>
           {message.output !== undefined && (
             <Text color={message.isError ? "red" : MUTED}>
@@ -70,11 +84,6 @@ export function MessageItem({ message }: { message: DisplayMessage }) {
         </Box>
       );
   }
-}
-
-function summarize(input: unknown): string {
-  const json = JSON.stringify(input) ?? "";
-  return json.length > 80 ? `${json.slice(0, 77)}...` : json;
 }
 
 function firstLines(text: string, limit: number): string {

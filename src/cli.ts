@@ -135,6 +135,7 @@ render(
     permissions,
     commands,
     version: VERSION,
+    cwd,
     initialMessages: resumed ? toDisplayMessages(resumed.history) : [],
     onResumeSession: resumeSession,
     systemPromptFor,

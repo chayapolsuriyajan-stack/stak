@@ -1,4 +1,4 @@
-import { Box, useApp, useInput } from "ink";
+import { Box, useApp, useInput, useStdout } from "ink";
 import { useState } from "react";
 import type { AgentContext } from "../agent/loop.js";
 import type { CommandRegistry } from "../commands/dispatch.js";
@@ -9,19 +9,20 @@ import type { PermissionMode } from "../permissions/types.js";
 import { InputBox } from "./components/InputBox.js";
 import { MessageItem, MessageList } from "./components/MessageList.js";
 import { PermissionPrompt } from "./components/PermissionPrompt.js";
-import { Splash } from "./components/Splash.js";
 import { StatusBar } from "./components/StatusBar.js";
 import { useAgentSession } from "./hooks/useAgentSession.js";
 import { usePermissionPrompt } from "./hooks/usePermissionPrompt.js";
 import { splitLiveTail } from "./messageLiveness.js";
 import { extractNumberedChoices, resolveNumberedReply } from "./numberedChoices.js";
-import type { DisplayMessage } from "./types.js";
+import type { DisplayMessage, TranscriptItem } from "./types.js";
 
 export interface AppProps {
   ctx: AgentContext;
   permissions: PermissionManager;
   commands: CommandRegistry;
   version: string;
+  /** Working directory, shown in the banner. */
+  cwd: string;
   /** Transcript rebuilt from a resumed session, empty for a new one. */
   initialMessages?: DisplayMessage[];
   /** Starts a new session file, used by /clear. */
@@ -37,11 +38,13 @@ export function App({
   permissions,
   commands,
   version,
+  cwd,
   initialMessages,
   onNewSession,
   systemPromptFor,
 }: AppProps) {
   const { exit } = useApp();
+  const { stdout } = useStdout();
   const { messages, busy, sendMessage, append, clear, interrupt, usage } = useAgentSession(
     ctx,
     initialMessages,
@@ -50,6 +53,11 @@ export function App({
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<PermissionMode>(permissions.getMode());
   const [model, setModel] = useState(ctx.model);
+  // Bumped on /clear and remounted onto <MessageList>'s key so Ink's Static
+  // resets its printed-count and the banner reprints on a genuinely blank
+  // screen, instead of staying stuck at 1 item forever with the old
+  // transcript still sitting above it in scrollback.
+  const [epoch, setEpoch] = useState(0);
 
   const applyMode = (next: PermissionMode) => {
     setMode(next);
@@ -84,7 +92,12 @@ export function App({
       outcome = await commands.run(raw, {
         clear: () => {
           clear();
-          // A cleared conversation is a new session, not a gap in the old one.
+          // A cleared conversation is a new session, not a gap in the old
+          // one — reset the real terminal too, since otherwise the old
+          // transcript stays sitting in scrollback above a banner that
+          // silently didn't reprint (Static only ever grows).
+          stdout?.write("\x1B[2J\x1B[3J\x1B[H");
+          setEpoch((current) => current + 1);
           onNewSession?.();
         },
         getPermissionMode: () => permissions.getMode(),
@@ -168,19 +181,20 @@ export function App({
 
   // Everything but a possible live tail goes to Static, which prints once
   // and leaves real terminal scrollback alone from then on, instead of the
-  // whole history re-drawing every frame.
+  // whole history re-drawing every frame. The banner leads the same Static
+  // stream (Claude-Code-style: printed once, then scrolls away as the
+  // transcript grows below it) rather than being a conditionally-rendered
+  // screen that vanishes on the first message.
   const { committed, liveTail } = splitLiveTail(messages);
+  const items: TranscriptItem[] = [
+    { kind: "banner", version, cwd, provider: ctx.provider.name, model },
+    ...committed,
+  ];
 
   return (
     <Box flexDirection="column">
-      {messages.length === 0 ? (
-        <Splash version={version} />
-      ) : (
-        <>
-          <MessageList messages={committed} />
-          {liveTail && <MessageItem message={liveTail} />}
-        </>
-      )}
+      <MessageList key={epoch} items={items} />
+      {liveTail && <MessageItem message={liveTail} />}
 
       {request ? (
         <PermissionPrompt request={request} onDecide={decide} />
