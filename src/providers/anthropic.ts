@@ -1,7 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ContentBlock, Message } from "../agent/types.js";
+import { lookupContextLength } from "./contextLimits.js";
 import type {
   ChatRequest,
+  ModelInfo,
   Provider,
   ProviderStreamEvent,
   StopReason,
@@ -82,6 +84,13 @@ export class AnthropicProvider implements Provider {
       models.push(model.id);
     }
     return models;
+  }
+
+  modelInfo(model: string): Promise<ModelInfo> {
+    // The Anthropic API has no live source for this; a small hardcoded
+    // table is the only option, and undefined for anything it doesn't
+    // recognize rather than a guess.
+    return Promise.resolve({ contextLength: lookupContextLength(model) });
   }
 
   async *streamChat(req: ChatRequest): AsyncGenerator<ProviderStreamEvent> {

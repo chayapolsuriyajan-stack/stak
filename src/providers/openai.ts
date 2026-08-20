@@ -1,7 +1,9 @@
 import OpenAI from "openai";
 import type { Message } from "../agent/types.js";
+import { lookupContextLength } from "./contextLimits.js";
 import type {
   ChatRequest,
+  ModelInfo,
   Provider,
   ProviderStreamEvent,
   StopReason,
@@ -99,6 +101,11 @@ export class OpenAIProvider implements Provider {
       .map((model) => model.id)
       .filter((id) => /^(gpt-|o[1-9])/.test(id))
       .sort();
+  }
+
+  modelInfo(model: string): Promise<ModelInfo> {
+    // Same situation as Anthropic: no live endpoint reports this.
+    return Promise.resolve({ contextLength: lookupContextLength(model) });
   }
 
   async *streamChat(req: ChatRequest): AsyncGenerator<ProviderStreamEvent> {

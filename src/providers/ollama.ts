@@ -2,6 +2,7 @@ import { Ollama } from "ollama";
 import type { Message } from "../agent/types.js";
 import type {
   ChatRequest,
+  ModelInfo,
   Provider,
   ProviderStreamEvent,
   StopReason,
@@ -95,6 +96,20 @@ export class OllamaProvider implements Provider {
     return response.models.map((model) => model.name);
   }
 
+  async modelInfo(model: string): Promise<ModelInfo> {
+    // Best-effort: the server might be unreachable, or the model unpulled.
+    // A status-bar readout is never worth failing or blocking a turn over.
+    try {
+      const show = await this.client.show({ model });
+      return {
+        contextLength: parseContextLength(show.model_info, show.parameters),
+        capabilities: show.capabilities,
+      };
+    } catch {
+      return {};
+    }
+  }
+
   async *streamChat(req: ChatRequest): AsyncGenerator<ProviderStreamEvent> {
     let callIndex = 0;
     let sawToolCall = false;
@@ -176,6 +191,53 @@ function normalizeArgs(args: unknown): unknown {
 
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
+}
+
+/**
+ * Reads the architecture's native context length from `show()`'s
+ * `model_info` (keyed like `qwen35.context_length`, architecture-prefixed —
+ * hence the suffix search rather than a fixed key) and the effective
+ * `num_ctx` a Modelfile may have capped it to from `parameters`, a
+ * multi-line "key   value" string, and returns whichever is smaller: a
+ * Modelfile cap is a real ceiling on what will actually be used, so
+ * reporting the larger architectural number would overstate the window.
+ *
+ * `model_info` is typed as `Map<string, any>` by the ollama package's own
+ * .d.ts, but is actually a plain object at runtime (verified against a
+ * running server) — accepting `unknown` here decouples this function from
+ * that mismatch and keeps it independently testable against plain fixtures.
+ */
+export function parseContextLength(
+  modelInfo: unknown,
+  parameters: string | undefined,
+): number | undefined {
+  const archLength = findArchContextLength(modelInfo);
+  const numCtx = parseNumCtx(parameters);
+
+  if (archLength !== undefined && numCtx !== undefined) {
+    return Math.min(archLength, numCtx);
+  }
+  return archLength ?? numCtx;
+}
+
+function findArchContextLength(modelInfo: unknown): number | undefined {
+  const entries =
+    modelInfo instanceof Map
+      ? [...modelInfo.entries()]
+      : Object.entries((modelInfo ?? {}) as Record<string, unknown>);
+
+  for (const [key, value] of entries) {
+    if (key.endsWith(".context_length") && typeof value === "number") {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function parseNumCtx(parameters: string | undefined): number | undefined {
+  const match = parameters?.match(/^num_ctx\s+(\d+)/m);
+  const value = match?.[1] ? Number(match[1]) : undefined;
+  return value !== undefined && Number.isFinite(value) ? value : undefined;
 }
 
 /**

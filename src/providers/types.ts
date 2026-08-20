@@ -37,8 +37,20 @@ export type ProviderStreamEvent =
 
 export type ProviderName = "anthropic" | "openai" | "ollama";
 
+export interface ModelInfo {
+  /** Effective context window in tokens, if knowable. Undefined rather than
+   * a guess when the provider has no way to report it. */
+  contextLength?: number;
+  /** Server-reported feature flags, e.g. Ollama's "thinking"/"tools". */
+  capabilities?: string[];
+}
+
 export interface Provider {
   readonly name: ProviderName;
   listModels?(): Promise<string[]>;
+  /** Best-effort model metadata for the status bar and capability checks.
+   * Optional and expected to fail softly — a provider or model that can't
+   * report this should resolve to {}, never throw or block a turn. */
+  modelInfo?(model: string): Promise<ModelInfo>;
   streamChat(req: ChatRequest): AsyncGenerator<ProviderStreamEvent>;
 }
