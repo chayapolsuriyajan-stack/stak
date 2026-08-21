@@ -32,7 +32,23 @@ stak --resume              # pick a past session interactively
 stak --resume <id>         # resume one specific session directly
 stak --model llama3.2      # override the model for this run
 stak --provider anthropic  # override the provider
+stak --cwd ~/code/project  # operate on a specific directory instead of the current one
 ```
+
+`stak` operates on the current directory by default. To point it at a fixed
+project instead — from a shortcut, a shell alias, or just so you don't have
+to `cd` there first — set `STAK_CWD` once (e.g. in your shell profile):
+
+```bash
+export STAK_CWD=~/code/project   # bash/zsh
+```
+
+```powershell
+$env:STAK_CWD = "D:\code\project"   # PowerShell profile
+```
+
+`-C/--cwd` on the command line always outranks `STAK_CWD` for a one-off
+override.
 
 Inside a session:
 

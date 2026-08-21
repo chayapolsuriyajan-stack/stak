@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import { Command } from "commander";
 import { render } from "ink";
 import React from "react";
@@ -10,6 +11,7 @@ import { loadConfig } from "./config/load.js";
 import { PermissionManager } from "./permissions/manager.js";
 import { createProvider } from "./providers/registry.js";
 import type { Provider } from "./providers/types.js";
+import { resolveCwd } from "./resolveCwd.js";
 import type { SessionSummary } from "./sessions/resume.js";
 import { findLatestSession, findSessionById, listSessions, loadSession } from "./sessions/resume.js";
 import { SessionStore } from "./sessions/store.js";
@@ -30,6 +32,10 @@ const program = new Command()
   .version(VERSION)
   .option("-m, --model <model>", "model to use for this session")
   .option("-p, --provider <provider>", "provider: anthropic, openai, or ollama")
+  .option(
+    "-C, --cwd <path>",
+    "directory to operate in, defaults to STAK_CWD or the current directory",
+  )
   .option("-c, --continue", "resume the most recent session in this directory")
   .option(
     "-r, --resume [sessionId]",
@@ -40,11 +46,27 @@ const program = new Command()
 const options = program.opts<{
   model?: string;
   provider?: string;
+  cwd?: string;
   continue?: boolean;
   resume?: string | true;
 }>();
 
+const cwd = resolveCwd({
+  flag: options.cwd,
+  env: process.env["STAK_CWD"],
+  processCwd: process.cwd(),
+});
+
+try {
+  const stat = await fs.stat(cwd);
+  if (!stat.isDirectory()) throw new Error("not a directory");
+} catch {
+  console.error(`stak: "${cwd}" is not a directory.`);
+  process.exit(1);
+}
+
 const config = await loadConfig({
+  cwd,
   provider: options.provider,
   model: options.model,
 });
@@ -57,7 +79,6 @@ try {
   process.exit(1);
 }
 
-const cwd = process.cwd();
 const permissions = new PermissionManager(config.permissionMode, cwd);
 const { skills, warnings: skillWarnings } = await loadSkills(cwd);
 const tools = new ToolRegistry({
