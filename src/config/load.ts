@@ -9,10 +9,16 @@ import type {
   ResolvedConfig,
 } from "./types.js";
 
+// Ollama's default is deliberately a widely-pulled, small model rather than
+// anything project-specific — there is no universal "right" local model, and
+// a name that only exists on the machine that happened to develop this would
+// fail confusingly for anyone else. cli.ts separately warns at startup if
+// the resolved model (this default, or whatever the user configured) isn't
+// actually present locally, which catches both a fresh install and a typo.
 const DEFAULT_MODELS: Record<ProviderName, string> = {
   anthropic: "claude-sonnet-4-5",
   openai: "gpt-4o",
-  ollama: "qwen3.8-q3xl",
+  ollama: "llama3.2",
 };
 
 const SECRET_KEYS = ["anthropicApiKey", "openaiApiKey", "apiKey", "token"];

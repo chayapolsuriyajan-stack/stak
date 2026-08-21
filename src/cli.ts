@@ -20,8 +20,9 @@ import type { AnyTool } from "./tools/types.js";
 import { toDisplayMessages } from "./tui/history.js";
 import { Root } from "./tui/Root.js";
 import type { DisplayMessage } from "./tui/types.js";
+import { readVersion } from "./version.js";
 
-const VERSION = "0.1.0";
+const VERSION = readVersion(import.meta.url);
 
 const program = new Command()
   .name("stak")

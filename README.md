@@ -7,6 +7,15 @@ same either way.
 ## Install
 
 ```bash
+npm install -g github:chayapolsuriyajan-stack/stak
+```
+
+Requires Node 20+. This installs straight from GitHub — stak isn't published
+to the npm registry.
+
+To work on stak itself instead:
+
+```bash
 npm install
 npm run build
 npm link
@@ -21,7 +30,7 @@ stak                       # start a session in the current directory
 stak --continue            # resume the most recent session here
 stak --resume              # pick a past session interactively
 stak --resume <id>         # resume one specific session directly
-stak --model qwen3.8-q3xl  # override the model for this run
+stak --model llama3.2      # override the model for this run
 stak --provider anthropic  # override the provider
 ```
 
@@ -57,7 +66,7 @@ Credentials and defaults live in `~/.stak/config.json`:
 ```json
 {
   "defaultProvider": "ollama",
-  "defaultModel": "qwen3.8-q3xl",
+  "defaultModel": "llama3.2",
   "anthropicApiKey": "sk-...",
   "openaiApiKey": "sk-...",
   "ollamaHost": "http://localhost:11434"
@@ -89,6 +98,30 @@ read/grep/glob/Skill, then present a concrete plan and stop — it won't retry
 blocked tools or nag you to switch modes. Cycling to any other mode (`shift+tab`
 or `/permissions ask`) is how you approve the plan; send a follow-up message
 like "go ahead" and it executes normally from there.
+
+## Security
+
+**The `bash` tool is not sandboxed.** A command stak is allowed to run can do
+anything your OS user account can do — read, write, or delete any file you
+have access to, reach the network, install software. There is no allowlist
+or denylist of commands; pattern-matching shell input to decide what's "safe"
+is easy to get wrong and easy to bypass, so stak doesn't pretend to do it.
+Treat an approved `bash` call exactly as if you had typed it yourself, and
+lean on the permission modes above — `ask` (the default) or `plan` — rather
+than assuming the tool itself limits what a command can reach.
+
+The file tools (`read`, `write`, `edit`, `glob`, `grep`) are different: they
+are confined to the project directory stak was started in. A path that
+resolves outside it — via `..`, an absolute path, or a same-prefix sibling
+directory like `../project-evil` — is rejected before anything touches disk.
+This confinement is unconditional; no config setting weakens it. It does not
+apply to `bash`, since a shell command can `cd` anywhere regardless of what
+argument it was called with — confining only that argument would be a false
+sense of safety rather than a real one.
+
+Session transcripts (`.stak/sessions/`) can contain whatever the model read
+or wrote, including file contents from your project — review before sharing
+one or committing `.stak/`.
 
 ## Commands and skills
 

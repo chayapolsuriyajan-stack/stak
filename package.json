@@ -3,6 +3,27 @@
   "version": "0.1.0",
   "description": "A local-first agentic coding CLI with pluggable model providers",
   "type": "module",
+  "license": "MIT",
+  "author": "Chayapol Suriyajan <chayapol.suriyajan@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chayapolsuriyajan-stack/stak.git"
+  },
+  "homepage": "https://github.com/chayapolsuriyajan-stack/stak#readme",
+  "bugs": {
+    "url": "https://github.com/chayapolsuriyajan-stack/stak/issues"
+  },
+  "keywords": [
+    "cli",
+    "agent",
+    "agentic",
+    "coding-assistant",
+    "ollama",
+    "llm",
+    "anthropic",
+    "openai",
+    "terminal"
+  ],
   "bin": {
     "stak": "./dist/cli.js"
   },
@@ -14,7 +35,9 @@
     "dev": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
   },
   "engines": {
     "node": ">=20"
