@@ -15,6 +15,7 @@ import type { DisplayMessage } from "./types.js";
 export function isLive(message: DisplayMessage): boolean {
   return (
     (message.kind === "assistant" && message.streaming === true) ||
+    (message.kind === "thinking" && message.streaming === true) ||
     (message.kind === "tool" && message.output === undefined)
   );
 }

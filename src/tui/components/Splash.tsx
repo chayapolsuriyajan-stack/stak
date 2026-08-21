@@ -37,7 +37,9 @@ export function Splash({ version, cwd, provider, model }: SplashProps) {
       <Text color={MUTED}>
         v{version} · {provider} {model} · {cwd}
       </Text>
-      <Text color={MUTED}>/help for commands · shift+tab permission mode</Text>
+      <Text color={MUTED}>
+        /help for commands · shift+tab permission mode · ctrl+o show thinking
+      </Text>
     </Box>
   );
 }

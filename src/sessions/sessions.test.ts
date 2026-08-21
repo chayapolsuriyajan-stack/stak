@@ -308,4 +308,29 @@ describe("transcript rebuilding", () => {
 
     expect(display).toEqual([]);
   });
+
+  test("redisplays a thinking block on --resume", () => {
+    const display = toDisplayMessages([
+      {
+        role: "assistant",
+        content: [
+          { type: "thinking", text: "reasoning from a prior session" },
+          { type: "text", text: "the answer" },
+        ],
+      },
+    ]);
+
+    expect(display).toEqual([
+      { kind: "thinking", text: "reasoning from a prior session" },
+      { kind: "assistant", text: "the answer" },
+    ]);
+  });
+
+  test("skips a blank thinking block", () => {
+    const display = toDisplayMessages([
+      { role: "assistant", content: [{ type: "thinking", text: "   " }] },
+    ]);
+
+    expect(display).toEqual([]);
+  });
 });

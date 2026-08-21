@@ -3,6 +3,11 @@
 export type DisplayMessage =
   | { kind: "user"; text: string }
   | { kind: "assistant"; text: string; streaming?: boolean }
+  /** Reasoning text. Rendered collapsed to a breadcrumb by default; Ctrl+O
+   * toggles full display going forward — see messageLiveness.ts and
+   * App.tsx. Never sent back to a provider; see agent/types.ts's
+   * ThinkingBlock for why. */
+  | { kind: "thinking"; text: string; streaming?: boolean }
   | { kind: "tool"; name: string; input: unknown; output?: string; isError?: boolean }
   | { kind: "notice"; text: string }
   | { kind: "error"; text: string };

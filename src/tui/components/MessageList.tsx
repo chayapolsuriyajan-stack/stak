@@ -10,21 +10,31 @@ export interface MessageListProps {
    * and never touches those rows again, instead of re-drawing the whole
    * history on every frame. The banner is always index 0. */
   items: TranscriptItem[];
+  /** Whether thinking blocks render in full (dimmed) or collapsed to a
+   * one-line breadcrumb. Applies to whatever is about to print — a thinking
+   * block already sitting in Static keeps whatever it was printed with,
+   * since Ink never repaints committed scrollback either way. */
+  showThinking?: boolean;
 }
 
-export function MessageList({ items }: MessageListProps) {
+export function MessageList({ items, showThinking = false }: MessageListProps) {
   return (
     <Static items={items}>
-      {(item, index) => <MessageItem key={index} message={item} />}
+      {(item, index) => (
+        <MessageItem key={index} message={item} showThinking={showThinking} />
+      )}
     </Static>
   );
 }
 
-/** Exported so the live (still-updating) tail message can reuse the same
- * rendering outside of Static. The live tail is always a DisplayMessage —
- * the banner never streams — but this accepts the wider type since callers
- * pass items straight from the same array. */
-export function MessageItem({ message }: { message: TranscriptItem }) {
+export interface MessageItemProps {
+  /** The live (still-updating) tail message reuses this outside of Static;
+   * the wider TranscriptItem type covers the banner, which never streams. */
+  message: TranscriptItem;
+  showThinking?: boolean;
+}
+
+export function MessageItem({ message, showThinking = false }: MessageItemProps) {
   switch (message.kind) {
     case "banner":
       return (
@@ -50,6 +60,15 @@ export function MessageItem({ message }: { message: TranscriptItem }) {
       return (
         <Box marginBottom={1}>
           <Text>{message.text}</Text>
+        </Box>
+      );
+
+    case "thinking":
+      return (
+        <Box marginBottom={1}>
+          <Text color={MUTED}>
+            {showThinking ? message.text : thinkingBreadcrumb(message)}
+          </Text>
         </Box>
       );
 
@@ -84,6 +103,12 @@ export function MessageItem({ message }: { message: TranscriptItem }) {
         </Box>
       );
   }
+}
+
+function thinkingBreadcrumb(message: { text: string; streaming?: boolean }): string {
+  if (message.streaming) return "✻ Thinking…";
+  const n = message.text.split("\n").length;
+  return `✻ Thought for ${n} line${n === 1 ? "" : "s"}`;
 }
 
 function firstLines(text: string, limit: number): string {

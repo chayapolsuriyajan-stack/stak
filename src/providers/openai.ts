@@ -16,7 +16,7 @@ type ChatMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
  * Flattens block-structured history into OpenAI's message list. Tool results
  * become their own `role: "tool"` messages keyed by the call they answer.
  */
-function toOpenAIMessages(systemPrompt: string, history: Message[]): ChatMessage[] {
+export function toOpenAIMessages(systemPrompt: string, history: Message[]): ChatMessage[] {
   const messages: ChatMessage[] = [{ role: "system", content: systemPrompt }];
 
   for (const message of history) {
@@ -44,6 +44,12 @@ function toOpenAIMessages(systemPrompt: string, history: Message[]): ChatMessage
             tool_call_id: block.toolUseId,
             content: block.content,
           });
+          break;
+        case "thinking":
+          // Dropped, deliberately: must never be replayed back as if it
+          // were prior assistant speech. (This is a void switch so an
+          // unhandled case would already be a silent no-op — explicit here
+          // to match anthropic.ts and make the omission visibly intended.)
           break;
       }
     }

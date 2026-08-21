@@ -3,6 +3,7 @@ import type { AgentContext } from "../../agent/loop.js";
 import { runTurn } from "../../agent/loop.js";
 import type { TurnPhase } from "../../agent/types.js";
 import type { StatsLine } from "../formatStats.js";
+import { appendDelta, finalizeStreaming } from "../streamBuffer.js";
 import type { DisplayMessage } from "../types.js";
 
 /**
@@ -17,6 +18,8 @@ export interface LiveTurn {
   round: number;
 }
 
+type StreamingKind = "assistant" | "thinking";
+
 export function useAgentSession(
   ctx: AgentContext,
   initialMessages: DisplayMessage[] = [],
@@ -29,26 +32,38 @@ export function useAgentSession(
   // completes rather than cleared, so context usage stays visible at rest
   // instead of vanishing the moment a turn ends.
   const [live, setLive] = useState<LiveTurn | undefined>(undefined);
+  // Both channels share one buffer rather than two, so the buffer only ever
+  // holds one kind's text at a time — switching kinds flushes immediately
+  // (see switchTo below) instead of risking both being non-empty at once
+  // when the flush timer happens to land on a thinking/text boundary.
+  const pendingKind = useRef<StreamingKind | null>(null);
   const pendingText = useRef("");
   const flushTimer = useRef<NodeJS.Timeout | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const flush = useCallback(() => {
+    const kind = pendingKind.current;
     const text = pendingText.current;
-    if (text === "") return;
+    if (kind === null || text === "") return;
     pendingText.current = "";
 
-    setMessages((current) => {
-      const last = current[current.length - 1];
-      if (last?.kind === "assistant" && last.streaming) {
-        return [
-          ...current.slice(0, -1),
-          { ...last, text: last.text + text },
-        ];
-      }
-      return [...current, { kind: "assistant", text, streaming: true }];
-    });
+    setMessages((current) => appendDelta(current, kind, text));
   }, []);
+
+  /** Buffers a delta, flushing first if a different kind was mid-buffer —
+   * appendDelta itself would finalize the old one regardless, but flushing
+   * eagerly here keeps the two channels from ever needing to be
+   * reconciled inside a single buffered string. */
+  const bufferDelta = useCallback(
+    (kind: StreamingKind, text: string) => {
+      if (pendingKind.current !== null && pendingKind.current !== kind) {
+        flush();
+      }
+      pendingKind.current = kind;
+      pendingText.current += text;
+    },
+    [flush],
+  );
 
   const startFlushing = useCallback(() => {
     if (flushTimer.current) return;
@@ -61,13 +76,8 @@ export function useAgentSession(
       flushTimer.current = null;
     }
     flush();
-    setMessages((current) => {
-      const last = current[current.length - 1];
-      if (last?.kind === "assistant" && last.streaming) {
-        return [...current.slice(0, -1), { ...last, streaming: false }];
-      }
-      return current;
-    });
+    pendingKind.current = null;
+    setMessages((current) => finalizeStreaming(current));
   }, [flush]);
 
   const append = useCallback((message: DisplayMessage) => {
@@ -93,7 +103,11 @@ export function useAgentSession(
         for await (const event of runTurn(ctx, input, { signal: controller.signal })) {
           switch (event.type) {
             case "text-delta":
-              pendingText.current += event.text;
+              bufferDelta("assistant", event.text);
+              break;
+
+            case "thinking-delta":
+              bufferDelta("thinking", event.text);
               break;
 
             case "tool-call-start":
@@ -171,7 +185,7 @@ export function useAgentSession(
         setBusy(false);
       }
     },
-    [ctx, append, startFlushing, stopFlushing],
+    [ctx, append, startFlushing, stopFlushing, bufferDelta],
   );
 
   const interrupt = useCallback(() => {

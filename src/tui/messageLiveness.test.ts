@@ -27,6 +27,15 @@ describe("isLive", () => {
     expect(isLive({ kind: "notice", text: "note" })).toBe(false);
     expect(isLive({ kind: "error", text: "oops" })).toBe(false);
   });
+
+  test("a streaming thinking message is live", () => {
+    expect(isLive({ kind: "thinking", text: "hmm", streaming: true })).toBe(true);
+  });
+
+  test("a finished thinking message is not live", () => {
+    expect(isLive({ kind: "thinking", text: "hmm", streaming: false })).toBe(false);
+    expect(isLive({ kind: "thinking", text: "hmm" })).toBe(false);
+  });
 });
 
 describe("splitLiveTail", () => {
@@ -72,5 +81,29 @@ describe("splitLiveTail", () => {
     ];
 
     expect(splitLiveTail(messages)).toEqual({ committed: messages, liveTail: undefined });
+  });
+
+  test("splits off a streaming trailing thinking message", () => {
+    const finished: DisplayMessage = { kind: "user", text: "hi" };
+    const streaming: DisplayMessage = { kind: "thinking", text: "reasoning", streaming: true };
+
+    expect(splitLiveTail([finished, streaming])).toEqual({
+      committed: [finished],
+      liveTail: streaming,
+    });
+  });
+
+  test("a finished thinking message followed by live assistant text keeps only the text live", () => {
+    // The real sequence within a round: thinking finalizes, then assistant
+    // text becomes the live tail — only one item is ever live at a time.
+    const messages: DisplayMessage[] = [
+      { kind: "thinking", text: "reasoning", streaming: false },
+      { kind: "assistant", text: "answer so far", streaming: true },
+    ];
+
+    expect(splitLiveTail(messages)).toEqual({
+      committed: [messages[0]],
+      liveTail: messages[1],
+    });
   });
 });

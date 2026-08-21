@@ -23,6 +23,12 @@ export function toDisplayMessages(history: Message[]): DisplayMessage[] {
           break;
         }
 
+        case "thinking": {
+          if (block.text.trim() === "") break;
+          display.push({ kind: "thinking", text: block.text });
+          break;
+        }
+
         case "tool_use": {
           toolIndexById.set(block.id, display.length);
           display.push({ kind: "tool", name: block.name, input: block.input });

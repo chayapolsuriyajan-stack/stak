@@ -70,9 +70,11 @@ export async function* runTurn(
     const assistantBlocks: ContentBlock[] = [];
     const toolCalls: { id: string; name: string; input: unknown }[] = [];
     let text = "";
+    let thinking = "";
     let providerError: Error | undefined;
     let stopReason: StopReason = "end_turn";
     let generating = false;
+    let thinkingStarted = false;
     let roundUsage: { inputTokens: number; outputTokens: number; generatingMs?: number } = {
       inputTokens: 0,
       outputTokens: 0,
@@ -84,6 +86,10 @@ export async function* runTurn(
       systemPrompt: ctx.systemPrompt,
       history: ctx.history,
       tools: ctx.tools ?? [],
+      // Always requested where the provider supports it — Ctrl+O in the TUI
+      // only controls whether reasoning is *shown*, not whether it's
+      // generated, so the data needs to exist regardless of that toggle.
+      options: { think: true },
     });
 
     for await (const event of stream) {
@@ -101,6 +107,21 @@ export async function* runTurn(
             yield* progress();
           }
           yield { type: "text-delta", text: event.text };
+          break;
+
+        case "thinking-delta":
+          thinking += event.text;
+          // Counted into the same estimator as text-delta: the
+          // authoritative outputTokens figure from "usage" includes
+          // thinking tokens too, so excluding them here would skew the
+          // chars-per-token calibration low and inflate future estimates.
+          stats.recordTextDelta(event.text);
+          if (!thinkingStarted) {
+            thinkingStarted = true;
+            stats.setPhase("thinking");
+            yield* progress();
+          }
+          yield { type: "thinking-delta", text: event.text };
           break;
 
         case "tool-call-done":
@@ -140,6 +161,7 @@ export async function* runTurn(
     stats.recordRoundUsage(roundUsage, Date.now() - roundStart);
     yield* progress();
 
+    if (thinking !== "") assistantBlocks.push({ type: "thinking", text: thinking });
     if (text !== "") assistantBlocks.push({ type: "text", text });
     for (const call of toolCalls) {
       assistantBlocks.push({

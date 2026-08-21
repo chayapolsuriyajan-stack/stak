@@ -59,6 +59,10 @@ export function App({
   const [mode, setMode] = useState<PermissionMode>(permissions.getMode());
   const [model, setModel] = useState(ctx.model);
   const [contextLength, setContextLength] = useState<number | undefined>(undefined);
+  // Applies to new output only, per design: Ink's Static never repaints
+  // already-printed scrollback, so toggling this cannot retroactively
+  // reveal or hide a thinking block that already printed as a breadcrumb.
+  const [showThinking, setShowThinking] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,7 +88,7 @@ export function App({
   };
 
   useInput(
-    (_char, key) => {
+    (char, key) => {
       // Shift+Tab cycles how much the agent may do without asking.
       if (key.tab && key.shift) {
         void permissions.cycleMode().then((next) => {
@@ -100,6 +104,10 @@ export function App({
         // Escape stops work in progress; when there is none, it leaves.
         if (busy) interrupt();
         else exit();
+      }
+      // Ctrl+O toggles thinking display, matching Claude Code's binding.
+      if (key.ctrl && char === "o") {
+        setShowThinking((current) => !current);
       }
     },
     { isActive: request === null },
@@ -212,8 +220,8 @@ export function App({
 
   return (
     <Box flexDirection="column">
-      <MessageList key={epoch} items={items} />
-      {liveTail && <MessageItem message={liveTail} />}
+      <MessageList key={epoch} items={items} showThinking={showThinking} />
+      {liveTail && <MessageItem message={liveTail} showThinking={showThinking} />}
 
       {request ? (
         <PermissionPrompt request={request} onDecide={decide} />

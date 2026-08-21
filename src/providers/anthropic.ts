@@ -18,7 +18,7 @@ import type {
  * if one were sent (its own extended-thinking blocks carry a signature this
  * adapter never generates, since it doesn't request native thinking).
  */
-function toAnthropicContent(blocks: ContentBlock[]): Anthropic.ContentBlockParam[] {
+export function toAnthropicContent(blocks: ContentBlock[]): Anthropic.ContentBlockParam[] {
   return blocks.flatMap((block): Anthropic.ContentBlockParam[] => {
     switch (block.type) {
       case "text":

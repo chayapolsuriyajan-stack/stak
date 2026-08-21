@@ -54,3 +54,40 @@ test("summarizes a tool call rather than dumping raw JSON", () => {
   expect(frame).toContain("read(src/cli.ts)");
   expect(frame).not.toContain('{"path"');
 });
+
+test("collapses a finished thinking block to a breadcrumb by default", () => {
+  const items: TranscriptItem[] = [
+    banner,
+    { kind: "thinking", text: "line one\nline two\nline three", streaming: false },
+  ];
+
+  const { lastFrame } = render(<MessageList items={items} />);
+  const frame = lastFrame() ?? "";
+
+  expect(frame).toContain("Thought for 3 lines");
+  expect(frame).not.toContain("line one");
+});
+
+test("shows the full thinking text when showThinking is on", () => {
+  const items: TranscriptItem[] = [
+    banner,
+    { kind: "thinking", text: "the actual reasoning", streaming: false },
+  ];
+
+  const { lastFrame } = render(<MessageList items={items} showThinking />);
+  const frame = lastFrame() ?? "";
+
+  expect(frame).toContain("the actual reasoning");
+  expect(frame).not.toContain("Thought for");
+});
+
+test("a still-streaming thinking block shows an in-progress breadcrumb", () => {
+  const items: TranscriptItem[] = [
+    banner,
+    { kind: "thinking", text: "still going", streaming: true },
+  ];
+
+  const { lastFrame } = render(<MessageList items={items} />);
+
+  expect(lastFrame() ?? "").toContain("Thinking…");
+});

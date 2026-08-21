@@ -212,6 +212,84 @@ describe("truncation", () => {
   });
 });
 
+describe("thinking", () => {
+  test("streams thinking-delta events and records a thinking block before the text block", async () => {
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "thinking-delta", text: "let me consider this" },
+          { type: "text-delta", text: "the answer" },
+          { type: "message-done", stopReason: "end_turn" },
+        ],
+      ]),
+    );
+
+    const events = await collect(runTurn(ctx, "hi"));
+
+    expect(events.some((e) => e.type === "thinking-delta" && e.text === "let me consider this")).toBe(
+      true,
+    );
+    expect(ctx.history[1]).toEqual({
+      role: "assistant",
+      content: [
+        { type: "thinking", text: "let me consider this" },
+        { type: "text", text: "the answer" },
+      ],
+    });
+  });
+
+  test("transitions phase to thinking on the first thinking delta", async () => {
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "thinking-delta", text: "hmm" },
+          { type: "message-done", stopReason: "end_turn" },
+        ],
+      ]),
+    );
+
+    const events = await collect(runTurn(ctx, "hi"));
+
+    expect(
+      events.some((e) => e.type === "progress" && e.phase === "thinking"),
+    ).toBe(true);
+  });
+
+  test("a round with no thinking does not add a thinking block to history", async () => {
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "text-delta", text: "just an answer" },
+          { type: "message-done", stopReason: "end_turn" },
+        ],
+      ]),
+    );
+
+    await collect(runTurn(ctx, "hi"));
+
+    expect(ctx.history[1]).toEqual({
+      role: "assistant",
+      content: [{ type: "text", text: "just an answer" }],
+    });
+  });
+
+  test("always requests native thinking from the provider", async () => {
+    let capturedOptions: unknown;
+    const provider: Provider = {
+      name: "ollama",
+      async *streamChat(req: ChatRequest) {
+        capturedOptions = req.options;
+        yield { type: "message-done", stopReason: "end_turn" };
+      },
+    };
+    const ctx = context(provider);
+
+    await collect(runTurn(ctx, "hi"));
+
+    expect(capturedOptions).toEqual({ think: true });
+  });
+});
+
 describe("usage", () => {
   test("sums tokens across every round trip in the turn", async () => {
     const ctx = context(

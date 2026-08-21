@@ -86,6 +86,9 @@ for await (const event of runTurn(ctx, prompt)) {
     case "text-delta":
       process.stdout.write(event.text);
       break;
+    case "thinking-delta":
+      process.stderr.write(event.text);
+      break;
     case "tool-call-start":
       process.stdout.write(`\n[tool] ${event.name} ${JSON.stringify(event.input)}\n`);
       break;
