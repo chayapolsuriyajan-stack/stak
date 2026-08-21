@@ -9,8 +9,13 @@ import type { DisplayMessage } from "../types.js";
 /**
  * Streaming deltas arrive far faster than the terminal can usefully repaint,
  * so text is buffered and flushed on this interval instead of per token.
+ * 33ms (~30Hz) used to flicker visibly on Windows terminals — Ink redraws
+ * the whole dynamic region (live message + status bar) on every flush, and
+ * that many full rewrites a second is more than those terminals repaint
+ * cleanly. 60ms (~16Hz) is still smooth for a chat reveal but cuts the
+ * redraw rate roughly in half.
  */
-const FLUSH_INTERVAL_MS = 33;
+const FLUSH_INTERVAL_MS = 60;
 
 export interface LiveTurn {
   stats: StatsLine;
@@ -26,11 +31,11 @@ export function useAgentSession(
 ) {
   const [messages, setMessages] = useState<DisplayMessage[]>(initialMessages);
   const [busy, setBusy] = useState(false);
-  // Updated from the loop's "progress" events, which are already throttled
-  // at the source (only on phase transitions and round-end reconciliation,
-  // not per token) — no extra throttling needed here. Kept after the turn
-  // completes rather than cleared, so context usage stays visible at rest
-  // instead of vanishing the moment a turn ends.
+  // Updated from the loop's "progress" events via the same buffer/flush
+  // tick as streaming text (see pendingLive below), so a progress update
+  // never causes an extra repaint on top of the text flush. Kept after the
+  // turn completes rather than cleared, so context usage stays visible at
+  // rest instead of vanishing the moment a turn ends.
   const [live, setLive] = useState<LiveTurn | undefined>(undefined);
   // Both channels share one buffer rather than two, so the buffer only ever
   // holds one kind's text at a time — switching kinds flushes immediately
@@ -38,16 +43,29 @@ export function useAgentSession(
   // when the flush timer happens to land on a thinking/text boundary.
   const pendingKind = useRef<StreamingKind | null>(null);
   const pendingText = useRef("");
+  // "progress" events (tok/s, phase, context usage) used to call setLive
+  // directly and immediately, outside this buffer entirely — landing as a
+  // second, unbatched re-render at some arbitrary offset from the flush
+  // tick below, on top of the one that tick already causes. Buffering it
+  // here and applying it in the same call as the text flush lets React
+  // batch both state updates into one repaint per tick instead of two.
+  const pendingLive = useRef<LiveTurn | undefined>(undefined);
   const flushTimer = useRef<NodeJS.Timeout | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const flush = useCallback(() => {
     const kind = pendingKind.current;
     const text = pendingText.current;
-    if (kind === null || text === "") return;
-    pendingText.current = "";
+    if (kind !== null && text !== "") {
+      pendingText.current = "";
+      setMessages((current) => appendDelta(current, kind, text));
+    }
 
-    setMessages((current) => appendDelta(current, kind, text));
+    const nextLive = pendingLive.current;
+    if (nextLive !== undefined) {
+      pendingLive.current = undefined;
+      setLive(nextLive);
+    }
   }, []);
 
   /** Buffers a delta, flushing first if a different kind was mid-buffer —
@@ -156,7 +174,7 @@ export function useAgentSession(
               break;
 
             case "progress":
-              setLive({
+              pendingLive.current = {
                 stats: {
                   outputTokens: event.outputTokens,
                   approx: event.approx,
@@ -165,7 +183,7 @@ export function useAgentSession(
                 },
                 phase: event.phase,
                 round: event.round,
-              });
+              };
               break;
 
             case "usage":
