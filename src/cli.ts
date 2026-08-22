@@ -172,6 +172,9 @@ const instance = render(
     onNewSession: () => {
       store = new SessionStore({ provider: provider.name, model: ctx.model, cwd });
     },
+    autoCompact: config.autoCompact,
+    autoCompactThreshold: config.autoCompactThreshold,
+    onCompacted: (history) => store.compacted(history),
   }),
 );
 

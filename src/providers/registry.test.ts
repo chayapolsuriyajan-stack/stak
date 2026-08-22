@@ -9,6 +9,8 @@ function config(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
     permissionMode: "ask",
     ollamaHost: "http://localhost:11434",
     mcpServers: [],
+    autoCompact: true,
+    autoCompactThreshold: 0.85,
     warnings: [],
     ...overrides,
   };

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { CommandRegistry, isCommand, parse } from "./dispatch.js";
 import { loadMarkdownCommands } from "./loader.js";
 import type { CommandContext } from "./types.js";
+import type { CompactResult } from "../agent/compact.js";
 import type { McpServerStatus } from "../mcp/types.js";
 
 let cwd: string;
@@ -27,6 +28,15 @@ function context(overrides: Partial<CommandContext> = {}) {
     describeModel: () => "ollama test-model",
     listModels: vi.fn(async () => undefined),
     listMcpServers: (): McpServerStatus[] => [],
+    compact: vi.fn(
+      async (): Promise<CompactResult> => ({
+        summary: "test summary",
+        messagesBefore: 10,
+        messagesAfter: 4,
+        estimatedTokensBefore: 1000,
+        estimatedTokensAfter: 100,
+      }),
+    ),
     ...overrides,
   };
 }
@@ -204,6 +214,42 @@ describe("builtins", () => {
     if (outcome.kind !== "notice") return;
     expect(outcome.text).toContain("filesystem (project): connected, 4 tools");
     expect(outcome.text).toContain("github (global): failed — connection refused");
+  });
+
+  test("/compact with no argument compacts without a focus", async () => {
+    const registry = await CommandRegistry.load(cwd);
+    const ctx = context();
+
+    const outcome = await registry.run("/compact", ctx);
+
+    expect(ctx.compact).toHaveBeenCalledWith(undefined);
+    expect(outcome.kind).toBe("notice");
+    if (outcome.kind !== "notice") return;
+    expect(outcome.text).toMatch(/\d/);
+  });
+
+  test("/compact with an argument passes it through as the focus", async () => {
+    const registry = await CommandRegistry.load(cwd);
+    const ctx = context();
+
+    await registry.run("/compact focus on the auth bug", ctx);
+
+    expect(ctx.compact).toHaveBeenCalledWith("focus on the auth bug");
+  });
+
+  test("/compact reports a failure as an error instead of throwing", async () => {
+    const registry = await CommandRegistry.load(cwd);
+    const ctx = context({
+      compact: vi.fn(async () => {
+        throw new Error("nothing to compact yet");
+      }),
+    });
+
+    const outcome = await registry.run("/compact", ctx);
+
+    expect(outcome.kind).toBe("error");
+    if (outcome.kind !== "error") return;
+    expect(outcome.text).toContain("nothing to compact yet");
   });
 
   test("/exit asks the app to quit", async () => {

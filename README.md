@@ -85,7 +85,9 @@ Credentials and defaults live in `~/.stak/config.json`:
   "defaultModel": "llama3.2",
   "anthropicApiKey": "sk-...",
   "openaiApiKey": "sk-...",
-  "ollamaHost": "http://localhost:11434"
+  "ollamaHost": "http://localhost:11434",
+  "autoCompact": true,
+  "autoCompactThreshold": 0.85
 }
 ```
 
@@ -93,6 +95,12 @@ Environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_HOST`,
 `STAK_MODEL`) override that file. A project may pick its own model in
 `.stak/settings.json`, which outranks both — but credentials there are ignored
 and warned about, since project files tend to end up in version control.
+
+`autoCompact` (boolean, default `true`) turns automatic compaction on or off.
+`autoCompactThreshold` (number strictly between 0 and 1, default `0.85`) sets
+the context-usage fraction that triggers it. Both are settable in
+`~/.stak/config.json` (global) or `.stak/settings.json` (project) — same
+precedence as everything else here, project overrides global.
 
 ## MCP servers
 
@@ -217,7 +225,10 @@ rather than silently presenting an incomplete answer as done. If you're
 hitting this often, `num_ctx` in your Modelfile is likely too small for the
 task at hand; raising it costs VRAM headroom (more context needs a bigger
 KV cache), so there's a real tradeoff against how much of the model can stay
-resident on a GPU with limited memory.
+resident on a GPU with limited memory. Raising `num_ctx` is a fix after the
+fact; running `/compact` before you hit the limit avoids the cutoff in the
+first place — see [Compacting the conversation](#compacting-the-conversation)
+below.
 
 ## Sessions
 
@@ -226,6 +237,32 @@ interrupted session still leaves a resumable transcript. `--continue` reopens
 the most recent one; `--resume` with no id shows a picker (age, model, message
 count, first-message preview) and `--resume <id>` loads one directly. All
 three keep writing to the same file rather than starting a new one.
+
+## Compacting the conversation
+
+A long conversation eventually runs into the model's context limit. `/compact`
+summarizes the older part of the transcript into a short summary message,
+keeps the last few turns verbatim, and replaces the rest with that summary —
+freeing up context room instead of hitting a hard limit or losing everything
+with `/clear`.
+
+```
+/compact
+/compact focus on the auth bug
+```
+
+The optional `focus` argument steers what the summary emphasizes — without
+it, stak summarizes generally.
+
+Compaction also runs automatically: once context usage crosses a threshold
+(85% of the model's known context window, by default) stak compacts on its
+own, no user action needed. A notice appears in the transcript when this
+happens, prefixed "Auto-compacted." so it's distinguishable from a manual
+`/compact`.
+
+Either way, the result is saved to the session file — `--continue` and
+`--resume` reload the compacted (short) history afterward, not the original
+long one.
 
 ## Development
 

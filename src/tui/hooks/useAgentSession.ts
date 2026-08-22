@@ -1,4 +1,6 @@
 import { useCallback, useRef, useState } from "react";
+import { compactHistory } from "../../agent/compact.js";
+import type { CompactResult } from "../../agent/compact.js";
 import type { AgentContext } from "../../agent/loop.js";
 import { runTurn } from "../../agent/loop.js";
 import type { TurnPhase } from "../../agent/types.js";
@@ -210,5 +212,26 @@ export function useAgentSession(
     abortRef.current?.abort();
   }, []);
 
-  return { messages, busy, sendMessage, append, clear, interrupt, live };
+  const compact = useCallback(
+    async (focus?: string): Promise<CompactResult> => {
+      if (busy) {
+        throw new Error("Can't compact while a turn is in progress.");
+      }
+      setBusy(true);
+      try {
+        return await compactHistory(ctx, { focus });
+      } finally {
+        // Stale — history just shrank (or the attempt failed), and the next
+        // real turn's "progress" events will produce fresh stats. Left set,
+        // this could otherwise make an auto-compaction check re-fire
+        // immediately on old numbers — including after a failed attempt,
+        // which would otherwise re-arm and re-fire on every subsequent turn.
+        setLive(undefined);
+        setBusy(false);
+      }
+    },
+    [ctx, busy],
+  );
+
+  return { messages, busy, sendMessage, append, clear, interrupt, live, compact };
 }

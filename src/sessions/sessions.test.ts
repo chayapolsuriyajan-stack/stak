@@ -188,6 +188,88 @@ describe("resuming", () => {
   });
 });
 
+describe("compaction", () => {
+  test("loading a session with a compaction record discards pre-compaction messages", async () => {
+    const session = store();
+    session.append(userText("one"));
+    session.append(assistantText("two"));
+    await session.flush();
+
+    const summaryMessage = assistantText("summary of the conversation so far");
+    session.compacted([summaryMessage]);
+    await session.flush();
+
+    session.append(userText("three"));
+    await session.flush();
+
+    const loaded = await loadSession(session.filePath);
+
+    expect(loaded?.history).toHaveLength(2);
+    expect(loaded?.history[0]).toEqual(summaryMessage);
+    expect(loaded?.history[1]).toEqual(userText("three"));
+  });
+
+  test("only the last of multiple compaction records matters", async () => {
+    const session = store();
+    session.append(userText("one"));
+    await session.flush();
+
+    session.compacted([assistantText("first summary")]);
+    await session.flush();
+
+    session.append(userText("two"));
+    await session.flush();
+
+    session.compacted([assistantText("second summary")]);
+    await session.flush();
+
+    session.append(userText("three"));
+    await session.flush();
+
+    const loaded = await loadSession(session.filePath);
+
+    expect(loaded?.history).toHaveLength(2);
+    expect(loaded?.history[0]).toEqual(assistantText("second summary"));
+    expect(loaded?.history[1]).toEqual(userText("three"));
+  });
+
+  test("a malformed line after a valid compaction record still allows the rest to load", async () => {
+    const session = store();
+    session.append(userText("one"));
+    await session.flush();
+
+    session.compacted([assistantText("summary")]);
+    await session.flush();
+
+    await fs.appendFile(session.filePath, '{"type":"message","mess\n');
+    session.append(userText("after the bad line"));
+    await session.flush();
+
+    const loaded = await loadSession(session.filePath);
+
+    expect(loaded?.history).toHaveLength(2);
+    expect(loaded?.history[0]).toEqual(assistantText("summary"));
+    expect(loaded?.history[1]).toEqual(userText("after the bad line"));
+  });
+
+  test("listSessions reflects post-compaction message count", async () => {
+    const session = store();
+    session.append(userText("one"));
+    session.append(assistantText("two"));
+    session.append(userText("three"));
+    await session.flush();
+
+    session.compacted([assistantText("summary")]);
+    await session.flush();
+
+    const [summary] = await listSessions(cwd);
+
+    expect(summary?.messageCount).toBe(1);
+    // preview keeps showing the original first prompt despite compaction.
+    expect(summary?.preview).toBe("one");
+  });
+});
+
 describe("findSessionById", () => {
   test("resolves an existing session by its id", async () => {
     const session = store();

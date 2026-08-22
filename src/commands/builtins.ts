@@ -1,3 +1,4 @@
+import { describeCompaction } from "../agent/compact.js";
 import { MODE_CYCLE, MODE_LABELS } from "../permissions/manager.js";
 import type { Command } from "./types.js";
 
@@ -125,6 +126,22 @@ export const builtinCommands: Command[] = [
         kind: "notice",
         text: ["MCP servers:", ...lines].join("\n"),
       };
+    },
+  },
+
+  {
+    name: "compact",
+    description: "summarize the conversation so far to free up context",
+    argumentHint: "[focus]",
+    source: "builtin",
+    async run(ctx) {
+      const focus = ctx.args.trim();
+      try {
+        const result = await ctx.compact(focus === "" ? undefined : focus);
+        return { kind: "notice", text: describeCompaction(result) };
+      } catch (error) {
+        return { kind: "error", text: error instanceof Error ? error.message : String(error) };
+      }
     },
   },
 

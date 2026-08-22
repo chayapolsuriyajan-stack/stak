@@ -123,6 +123,46 @@ describe("guardrails", () => {
   });
 });
 
+describe("autoCompact", () => {
+  test("defaults to true and 0.85 when unset", async () => {
+    const config = await loadConfig({ cwd });
+
+    expect(config.autoCompact).toBe(true);
+    expect(config.autoCompactThreshold).toBe(0.85);
+    expect(config.warnings).toEqual([]);
+  });
+
+  test("project settings override global defaults", async () => {
+    await writeProjectSettings({ autoCompact: false, autoCompactThreshold: 0.7 });
+
+    const config = await loadConfig({ cwd });
+
+    expect(config.autoCompact).toBe(false);
+    expect(config.autoCompactThreshold).toBe(0.7);
+  });
+
+  test.each([1.5, 0, -0.1])(
+    "an out-of-range threshold %s warns and falls back to 0.85",
+    async (threshold) => {
+      await writeProjectSettings({ autoCompactThreshold: threshold });
+
+      const config = await loadConfig({ cwd });
+
+      expect(config.autoCompactThreshold).toBe(0.85);
+      expect(config.warnings.join(" ")).toContain("autoCompactThreshold");
+    },
+  );
+
+  test("a valid custom threshold is used as-is with no warning", async () => {
+    await writeProjectSettings({ autoCompactThreshold: 0.7 });
+
+    const config = await loadConfig({ cwd });
+
+    expect(config.autoCompactThreshold).toBe(0.7);
+    expect(config.warnings).toEqual([]);
+  });
+});
+
 // Global config (~/.stak/config.json) is resolved via os.homedir() with no
 // cwd-relative override in src/config/paths.ts, so — unlike project
 // settings — it cannot be pointed at a temp directory without touching the

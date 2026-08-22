@@ -1,3 +1,4 @@
+import type { CompactResult } from "../agent/compact.js";
 import type { McpServerStatus } from "../mcp/types.js";
 
 /** What running a command asks the app to do. */
@@ -26,6 +27,8 @@ export interface CommandContext {
   listCommands: () => { name: string; description: string }[];
   /** Status of every configured MCP server, global and project. */
   listMcpServers: () => McpServerStatus[];
+  /** Summarizes the older portion of the conversation to free up context, optionally steered by a focus hint. */
+  compact: (focus?: string) => Promise<CompactResult>;
 }
 
 export interface Command {

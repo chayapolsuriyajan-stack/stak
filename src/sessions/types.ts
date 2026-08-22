@@ -10,7 +10,8 @@ export type SessionRecord =
       cwd: string;
       startedAt: string;
     }
-  | { type: "message"; message: Message; ts: string };
+  | { type: "message"; message: Message; ts: string }
+  | { type: "compaction"; history: Message[]; ts: string };
 
 export interface LoadedSession {
   sessionId: string;

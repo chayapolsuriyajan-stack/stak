@@ -67,6 +67,35 @@ export class SessionStore {
     });
   }
 
+  /**
+   * Persists a compaction: the summarized history that should replace
+   * everything before it on the next load. Compaction can only happen once a
+   * session already has messages in it (there is nothing to compact
+   * otherwise), so by the time this is called `append` has already written
+   * the meta record and `this.started` is already true — no header-writing
+   * concern to duplicate here.
+   */
+  compacted(history: Message[]): void {
+    // Snapshot synchronously, before any queuing/async work — `history` is
+    // the caller's live array (ctx.history), which runTurn can mutate in
+    // place if a new turn starts before this queued write actually runs.
+    // Serializing that live reference instead of a snapshot risks writing a
+    // history that has since gained more messages than were actually
+    // compacted.
+    const snapshot = [...history];
+    this.queue = this.queue.then(async () => {
+      try {
+        await this.write({
+          type: "compaction",
+          history: snapshot,
+          ts: new Date().toISOString(),
+        });
+      } catch {
+        // Persistence is a convenience; losing it should not end the session.
+      }
+    });
+  }
+
   /** Resolves once every queued append has been flushed. */
   async flush(): Promise<void> {
     await this.queue;

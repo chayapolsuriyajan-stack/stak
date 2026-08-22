@@ -122,6 +122,12 @@ async function summarizeSession(filePath: string): Promise<SessionSummary | unde
       if (preview === undefined && record.message.role === "user") {
         preview = firstText(record.message);
       }
+    } else if (record.type === "compaction") {
+      // messageCount should reflect the post-compaction history that will
+      // actually load, not records that no longer exist in it. `preview`
+      // is left untouched — it should keep showing the session's original
+      // first prompt regardless of later compaction.
+      messageCount = record.history.length;
     }
   }
 
@@ -178,6 +184,12 @@ export async function loadSession(filePath: string): Promise<LoadedSession | und
       model = record.model;
     } else if (record.type === "message") {
       history.push(record.message);
+    } else if (record.type === "compaction") {
+      // A compaction record replaces everything read so far with its own
+      // snapshot. Later `message` records keep appending on top of it as
+      // usual; a subsequent compaction record resets again.
+      history.length = 0;
+      history.push(...record.history);
     }
   }
 

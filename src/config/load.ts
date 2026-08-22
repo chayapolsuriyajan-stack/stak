@@ -80,6 +80,11 @@ export async function loadConfig(options: LoadOptions = {}): Promise<ResolvedCon
     openaiApiKey: env["OPENAI_API_KEY"] ?? global?.openaiApiKey,
     ollamaHost: env["OLLAMA_HOST"] ?? global?.ollamaHost ?? "http://localhost:11434",
     mcpServers,
+    autoCompact: project?.autoCompact ?? global?.autoCompact ?? true,
+    autoCompactThreshold: coerceThreshold(
+      project?.autoCompactThreshold ?? global?.autoCompactThreshold,
+      warnings,
+    ),
     warnings,
   };
 }
@@ -111,4 +116,13 @@ function coerceMode(
   if ((MODE_CYCLE as string[]).includes(value)) return value as PermissionMode;
   warnings.push(`Unknown permission mode "${value}", falling back to ask.`);
   return "ask";
+}
+
+function coerceThreshold(value: number | undefined, warnings: string[]): number {
+  if (value === undefined) return 0.85;
+  if (value > 0 && value < 1) return value;
+  warnings.push(
+    `Invalid autoCompactThreshold ${value} (must be between 0 and 1), falling back to 0.85.`,
+  );
+  return 0.85;
 }

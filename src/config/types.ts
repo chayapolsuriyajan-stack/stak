@@ -17,6 +17,8 @@ export interface GlobalConfig {
   openaiApiKey?: string;
   ollamaHost?: string;
   mcpServers?: Record<string, McpServerConfig>;
+  autoCompact?: boolean;
+  autoCompactThreshold?: number;
 }
 
 /** Shape of .stak/settings.json — per project, never secrets. */
@@ -25,6 +27,8 @@ export interface ProjectSettings {
   defaultModel?: string;
   permissionMode?: PermissionMode;
   mcpServers?: Record<string, McpServerConfig>;
+  autoCompact?: boolean;
+  autoCompactThreshold?: number;
 }
 
 /** Fully merged runtime configuration. */
@@ -36,6 +40,8 @@ export interface ResolvedConfig {
   openaiApiKey?: string;
   ollamaHost: string;
   mcpServers: NamedMcpServer[];
+  autoCompact: boolean;
+  autoCompactThreshold: number;
   /** Non-fatal problems worth surfacing once the UI is up. */
   warnings: string[];
 }
