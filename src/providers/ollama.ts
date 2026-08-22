@@ -218,9 +218,34 @@ export class OllamaProvider implements Provider {
 
       yield { type: "message-done", stopReason: toStopReason(doneReason, sawToolCall) };
     } catch (error) {
+      if (isTruncatedToolCallError(error)) {
+        // Ollama's Go server failed to json.Unmarshal a tool call's
+        // arguments and threw instead of ever sending a normal "done"
+        // chunk with done_reason "length" — there's no clean signal to key
+        // off the way there is for truncated plain text. Reported the same
+        // way a truncated reply already is (a "max_tokens" stop) rather
+        // than as a raw, unfriendly provider error that kills the whole
+        // turn: it's the same underlying cause, just surfacing through a
+        // different path because the failure happens server-side before a
+        // completion chunk is ever produced.
+        yield { type: "message-done", stopReason: "max_tokens" };
+        return;
+      }
       yield { type: "error", error: asError(error) };
     }
   }
+}
+
+/**
+ * "unexpected end of json input" is Go's encoding/json package's own
+ * message for a document that ends before it's structurally complete — the
+ * exact signature of generation being cut off mid-JSON, not some other
+ * failure. Tools with large arguments (write's file content, most often)
+ * are the ones that run out of budget before the closing brace.
+ */
+export function isTruncatedToolCallError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /unexpected end of json input/i.test(message);
 }
 
 /**

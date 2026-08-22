@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { parseContextLength, toStopReason } from "./ollama.js";
+import { isTruncatedToolCallError, parseContextLength, toStopReason } from "./ollama.js";
 
 describe("toStopReason", () => {
   test("a tool call always wins, regardless of done_reason", () => {
@@ -19,6 +19,29 @@ describe("toStopReason", () => {
   test("an unrecognized or missing done_reason defaults to a normal completion", () => {
     expect(toStopReason(undefined, false)).toBe("end_turn");
     expect(toStopReason("load", false)).toBe("end_turn");
+  });
+});
+
+describe("isTruncatedToolCallError", () => {
+  test("recognizes Go's json.Unmarshal message for a truncated document", () => {
+    const error = new Error(
+      `llama-server returned invalid tool call arguments for "write": unexpected end of JSON input`,
+    );
+    expect(isTruncatedToolCallError(error)).toBe(true);
+  });
+
+  test("is case-insensitive", () => {
+    expect(isTruncatedToolCallError(new Error("Unexpected End Of JSON Input"))).toBe(true);
+  });
+
+  test("does not misclassify an unrelated failure", () => {
+    expect(isTruncatedToolCallError(new Error("fetch failed: ECONNREFUSED"))).toBe(false);
+    expect(isTruncatedToolCallError(new Error("model not found"))).toBe(false);
+  });
+
+  test("handles a thrown non-Error value without crashing", () => {
+    expect(isTruncatedToolCallError("unexpected end of JSON input")).toBe(true);
+    expect(isTruncatedToolCallError(undefined)).toBe(false);
   });
 });
 

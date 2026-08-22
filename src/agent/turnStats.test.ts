@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TurnStats } from "./turnStats.js";
 
 describe("TurnStats", () => {
@@ -104,5 +104,70 @@ describe("TurnStats", () => {
     stats.recordTextDelta("aaaa"); // 4 chars at the still-default 4 chars/token
 
     expect(stats.snapshot().outputTokens).toBe(1);
+  });
+
+  // Regression: recordRoundUsage only adds to generatingMs once a round has
+  // *finished*, so a naive live snapshot mid-round reported 0ms the entire
+  // time — and since tok/s divides by that, the status bar showed nothing
+  // until a round (usually the whole turn, for an ordinary no-tool-calls
+  // reply) was already done.
+  describe("live generatingMs", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    test("reports elapsed time while a round is still generating, before it finishes", () => {
+      const stats = new TurnStats();
+      stats.setPhase("generating");
+      vi.advanceTimersByTime(500);
+
+      expect(stats.snapshot().generatingMs).toBe(500);
+    });
+
+    test("a thinking -> generating transition within one round keeps one continuous timer", () => {
+      const stats = new TurnStats();
+      stats.setPhase("thinking");
+      vi.advanceTimersByTime(200);
+      stats.setPhase("generating"); // should not reset the clock
+      vi.advanceTimersByTime(300);
+
+      expect(stats.snapshot().generatingMs).toBe(500);
+    });
+
+    test("the live timer does not run while waiting or executing a tool", () => {
+      const stats = new TurnStats();
+      stats.setPhase("waiting");
+      vi.advanceTimersByTime(1000);
+      expect(stats.snapshot().generatingMs).toBe(0);
+
+      stats.setPhase({ tool: "bash" });
+      vi.advanceTimersByTime(1000);
+      expect(stats.snapshot().generatingMs).toBe(0);
+    });
+
+    test("recordRoundUsage finalizes the live segment without double-counting it", () => {
+      const stats = new TurnStats();
+      stats.setPhase("generating");
+      vi.advanceTimersByTime(500);
+      stats.recordRoundUsage({ inputTokens: 1, outputTokens: 1, generatingMs: 500 }, 500);
+
+      // Not 1000 -- the round is over, so its time lives in the finalized
+      // total exactly once, not also still ticking as a live segment.
+      vi.advanceTimersByTime(9999);
+      expect(stats.snapshot().generatingMs).toBe(500);
+    });
+
+    test("setRound abandons the previous round's in-progress timer instead of carrying it over", () => {
+      const stats = new TurnStats();
+      stats.setPhase("generating");
+      vi.advanceTimersByTime(500);
+      stats.setRound(2);
+
+      expect(stats.snapshot().generatingMs).toBe(0);
+    });
   });
 });

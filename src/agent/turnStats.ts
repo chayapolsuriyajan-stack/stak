@@ -29,12 +29,22 @@ export interface RoundUsage {
 }
 
 /**
- * Pure, timer-free accumulator for one turn's live stats. Providers only
- * report authoritative token counts once per round (at stream end), so
- * output tokens are estimated from streamed characters in between and
- * reconciled — with the char/token ratio recalibrated — every time a real
- * count arrives, so the estimate converges toward the model's actual
- * tokenizer instead of guessing blind for the whole turn.
+ * Accumulator for one turn's live stats. Providers only report authoritative
+ * token counts once per round (at stream end), so output tokens are
+ * estimated from streamed characters in between and reconciled — with the
+ * char/token ratio recalibrated — every time a real count arrives, so the
+ * estimate converges toward the model's actual tokenizer instead of
+ * guessing blind for the whole turn.
+ *
+ * generatingMs works the same way: `recordRoundUsage` only adds to it once
+ * a round has *finished*, so a naive snapshot mid-round would report 0ms —
+ * and since tok/s divides by that, the live status bar would show nothing
+ * for the entire duration of a turn's first round (which, for an ordinary
+ * no-tool-calls turn, is the whole turn). `generatingStartedAt` tracks wall
+ * time for whichever round is currently producing tokens so a live snapshot
+ * has something real to divide by; it's the one piece of this class that
+ * isn't timer-free, unavoidably, since "how long has this been running" has
+ * no other source.
  */
 export class TurnStats {
   private charsPerToken = DEFAULT_CHARS_PER_TOKEN;
@@ -44,6 +54,7 @@ export class TurnStats {
   private totalInputTokens = 0;
   private totalOutputTokens = 0;
   private generatingMs = 0;
+  private generatingStartedAt: number | undefined;
   private phase: TurnPhase = "waiting";
   private round = 1;
 
@@ -52,6 +63,13 @@ export class TurnStats {
   }
 
   setPhase(phase: TurnPhase): void {
+    // Thinking and generating are both "producing tokens" for this purpose;
+    // a round that goes thinking -> generating keeps one continuous timer
+    // rather than resetting it partway through.
+    const producesTokens = phase === "generating" || phase === "thinking";
+    if (producesTokens && this.generatingStartedAt === undefined) {
+      this.generatingStartedAt = Date.now();
+    }
     this.phase = phase;
   }
 
@@ -60,6 +78,7 @@ export class TurnStats {
     // A fresh round starts back at "waiting" until its first delta arrives —
     // the previous round's phase should not linger across the boundary.
     this.phase = "waiting";
+    this.generatingStartedAt = undefined;
   }
 
   /**
@@ -73,6 +92,10 @@ export class TurnStats {
     this.totalOutputTokens += usage.outputTokens;
     this.latestInputTokens = usage.inputTokens;
     this.generatingMs += usage.generatingMs ?? fallbackGeneratingMs;
+    // The round that just finished is no longer "in progress" — its
+    // contribution now lives in the finalized generatingMs above, so the
+    // live timer must not also keep counting it (which would double it).
+    this.generatingStartedAt = undefined;
 
     // Recalibrate against what actually happened this round, so the estimate
     // for the next round starts from the real ratio rather than drifting
@@ -86,11 +109,13 @@ export class TurnStats {
 
   snapshot(): TurnStatsSnapshot {
     const estimateThisRound = Math.round(this.charsSinceAuthoritative / this.charsPerToken);
+    const liveMs =
+      this.generatingStartedAt !== undefined ? Date.now() - this.generatingStartedAt : 0;
     return {
       outputTokens: this.authoritativeOutputTokens + estimateThisRound,
       approx: estimateThisRound > 0,
       latestInputTokens: this.latestInputTokens,
-      generatingMs: this.generatingMs,
+      generatingMs: this.generatingMs + liveMs,
       phase: this.phase,
       round: this.round,
     };
