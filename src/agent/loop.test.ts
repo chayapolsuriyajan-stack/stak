@@ -106,11 +106,14 @@ describe("tool calls", () => {
 
     const events = await collect(runTurn(ctx, "read a"));
 
-    expect(executeTool).toHaveBeenCalledWith({
-      id: "t1",
-      name: "read",
-      input: { path: "a" },
-    });
+    expect(executeTool).toHaveBeenCalledWith(
+      {
+        id: "t1",
+        name: "read",
+        input: { path: "a" },
+      },
+      undefined,
+    );
     expect(withoutProgress(events).map((e) => e.type)).toEqual([
       "tool-call-start",
       "tool-call-result",
@@ -153,6 +156,28 @@ describe("tool calls", () => {
     const result = events.find((e) => e.type === "tool-call-result");
 
     expect(result).toMatchObject({ isError: true });
+  });
+
+  test("threads runTurn's own abort signal through to executeTool", async () => {
+    const controller = new AbortController();
+    const executeTool = vi.fn().mockResolvedValue({ output: "ok", isError: false });
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "tool-call-done", id: "t1", name: "bash", args: {} },
+          { type: "message-done", stopReason: "tool_use" },
+        ],
+        [{ type: "message-done", stopReason: "end_turn" }],
+      ]),
+      { executeTool },
+    );
+
+    await collect(runTurn(ctx, "go", { signal: controller.signal }));
+
+    expect(executeTool).toHaveBeenCalledWith(
+      { id: "t1", name: "bash", input: {} },
+      controller.signal,
+    );
   });
 });
 

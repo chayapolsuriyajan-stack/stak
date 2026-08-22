@@ -14,6 +14,7 @@ export interface AgentContext {
   /** Resolves a tool call to its result. Absent until milestone 3. */
   executeTool?: (
     call: { id: string; name: string; input: unknown },
+    signal?: AbortSignal,
   ) => Promise<{ output: string; isError: boolean }>;
   /** Tool schemas passed to the provider. Empty until milestone 3. */
   tools?: { name: string; description: string; jsonSchema: Record<string, unknown> }[];
@@ -205,7 +206,7 @@ export async function* runTurn(
       };
 
       const result = ctx.executeTool
-        ? await ctx.executeTool(call)
+        ? await ctx.executeTool(call, signal)
         : {
             output: `Tool "${call.name}" is not available.`,
             isError: true,

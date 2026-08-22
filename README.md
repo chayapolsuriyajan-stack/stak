@@ -31,8 +31,11 @@ stak --continue            # resume the most recent session here
 stak --resume              # pick a past session interactively
 stak --resume <id>         # resume one specific session directly
 stak --model llama3.2      # override the model for this run
-stak --provider anthropic  # override the provider
+stak -P anthropic          # override the provider (-P/--provider)
 stak --cwd ~/code/project  # operate on a specific directory instead of the current one
+stak -p "prompt"           # run one turn non-interactively and exit (-p/--print, headless mode)
+stak -p "prompt" --output-format json   # output format for --print: text (default), json, or stream-json
+stak -p "prompt" --permission-mode auto-bypass   # permission mode for --print (default: same as config; one of plan, ask, accept-edits, auto-bypass)
 ```
 
 `stak` operates on the current directory by default. To point it at a fixed
@@ -74,6 +77,59 @@ time. When the model's reply ends with a numbered list, answering with a bare
 number (`1`, `2`, ...) sends that option's text instead of the literal digit —
 useful for the model's own multiple-choice questions, and for approving a
 permission prompt (`1` = yes, `2` = no) without reaching for the arrow keys.
+
+## Headless mode
+
+```bash
+stak -p "explain what this project does"
+```
+
+`-p/--print` runs a single turn non-interactively and exits, instead of
+opening the interactive TUI — useful for scripting, CI, or piping stak into
+another tool.
+
+**Breaking change:** `-p` used to be short for `--provider`. It now means
+`--print`. Use `-P` (capital) for what `-p` used to do:
+
+```bash
+stak -P anthropic   # old -p behaviour, now -P
+stak -p "..."        # new: headless mode
+```
+
+Piping works both ways:
+
+```bash
+echo "summarize the README" | stak -p           # stdin only
+cat error.log | stak -p "why did this fail?"    # stdin + positional prompt
+```
+
+When both stdin and a positional prompt are given, the piped content becomes
+context prepended to the instruction.
+
+`--output-format` controls how the result is printed:
+
+- `text` (default) — human-readable, streamed as the model produces it.
+- `json` — a single JSON object with the full result once the turn finishes.
+- `stream-json` — one JSON object per event, newline-delimited (NDJSON), for
+  consuming the turn incrementally.
+
+```bash
+stak -p "list the files in src/" --output-format json
+stak -p "list the files in src/" --output-format stream-json
+```
+
+Exit codes: `0` on success, `1` on error, `130` if interrupted (Ctrl+C /
+SIGINT).
+
+`--permission-mode <mode>` overrides the permission mode for this invocation
+only — see [Permission modes](#permission-modes) for what each mode allows.
+It only applies with `--print`; passing it without `--print` is a hard error,
+the same as `--output-format` without `--print`. Headless mode has no
+interactive prompter, so by default (the project's configured permission
+mode, unless overridden here) every gated tool call is automatically denied;
+pass `--permission-mode accept-edits` or `--permission-mode auto-bypass` to
+let it actually act. This override is one-shot: it is never written to
+`.stak/settings.json`.
 
 ## Configuration
 
@@ -182,6 +238,13 @@ prompts in `ask`/`accept-edits` and is always refused in `plan` mode, with no
 finer-grained tier. stak has no way to verify what a remote server's tool
 actually does under the hood, so it treats all of them as unsandboxed by
 default; this is deliberate, not a gap.
+
+Headless mode (`--print`) has no way to prompt for permission, so by default
+every gated tool call (`bash`, `write`, `edit`, MCP tools) is automatically
+denied — exactly as if you ran the TUI in `ask` mode with no prompter
+registered. `--permission-mode` is the explicit, one-shot way to allow more
+for a single headless invocation, and it never modifies the persisted project
+settings in `.stak/settings.json`.
 
 ## Commands and skills
 

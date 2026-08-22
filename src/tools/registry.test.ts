@@ -121,3 +121,38 @@ test("reports an unknown tool without throwing", async () => {
   expect(result.isError).toBe(true);
   expect(result.output).toContain("No such tool");
 });
+
+test("forwards an abort signal through to the tool's execute context", async () => {
+  const { registry: tools } = registry("auto-bypass");
+  const controller = new AbortController();
+
+  // bashTool has real abort-handling code (ctx.signal?.addEventListener) that
+  // kills the child process and resolves immediately on abort, instead of
+  // waiting out its (much longer) timeout_ms. Run it out of os.tmpdir()
+  // rather than the per-test mkdtemp `cwd` above: on Windows, killing a
+  // shell:true child kills the shell but can leave the grandchild `node`
+  // process (which still holds the directory as its own cwd) running for a
+  // few more seconds, and afterEach's rmdir of `cwd` would otherwise race it.
+  const promise = tools.execute(
+    {
+      name: "bash",
+      input: {
+        command: `node -e "setTimeout(() => {}, 5000)"`,
+        timeout_ms: 10_000,
+        cwd: os.tmpdir(),
+      },
+    },
+    controller.signal,
+  );
+
+  // Give the child process a moment to actually spawn and register its
+  // abort listener before firing -- aborting the signal before that
+  // listener exists would be a no-op (addEventListener on an
+  // already-aborted signal never fires retroactively).
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  controller.abort();
+  const result = await promise;
+
+  expect(result.isError).toBe(true);
+  expect(result.output).toContain("interrupted");
+}, 10_000);

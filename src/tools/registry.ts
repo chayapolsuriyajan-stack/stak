@@ -61,10 +61,13 @@ export class ToolRegistry {
     }));
   }
 
-  async execute(call: {
-    name: string;
-    input: unknown;
-  }): Promise<ToolResult & { isError: boolean }> {
+  async execute(
+    call: {
+      name: string;
+      input: unknown;
+    },
+    signal?: AbortSignal,
+  ): Promise<ToolResult & { isError: boolean }> {
     const tool = this.tools.get(call.name);
     if (!tool) {
       return {
@@ -92,7 +95,7 @@ export class ToolRegistry {
     }
 
     try {
-      const result = await tool.execute(parsed.data as never, { cwd: this.cwd });
+      const result = await tool.execute(parsed.data as never, { cwd: this.cwd, signal });
       return { output: result.output, isError: result.isError ?? false };
     } catch (error) {
       return {
