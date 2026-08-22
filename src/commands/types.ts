@@ -1,4 +1,5 @@
 import type { CompactResult } from "../agent/compact.js";
+import type { LoadedMemory } from "../memory/types.js";
 import type { McpServerStatus } from "../mcp/types.js";
 
 /** What running a command asks the app to do. */
@@ -27,6 +28,11 @@ export interface CommandContext {
   listCommands: () => { name: string; description: string }[];
   /** Status of every configured MCP server, global and project. */
   listMcpServers: () => McpServerStatus[];
+  /** The project memory files (STAK.md) that were loaded for this session.
+   * Async: re-reads from disk on every call so /memory (and anything else
+   * that calls it) never reports stale content, e.g. right after /init just
+   * wrote a fresh STAK.md. */
+  listMemory: () => Promise<LoadedMemory>;
   /** Summarizes the older portion of the conversation to free up context, optionally steered by a focus hint. */
   compact: (focus?: string) => Promise<CompactResult>;
 }

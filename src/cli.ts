@@ -9,6 +9,9 @@ import type { Message } from "./agent/types.js";
 import { CommandRegistry } from "./commands/dispatch.js";
 import { loadConfig } from "./config/load.js";
 import { connectMcpServers } from "./mcp/client.js";
+import { appendMemory } from "./memory/append.js";
+import { formatMemory } from "./memory/format.js";
+import { loadMemory } from "./memory/loader.js";
 import { PermissionManager } from "./permissions/manager.js";
 import { createProvider } from "./providers/registry.js";
 import type { Provider } from "./providers/types.js";
@@ -72,6 +75,8 @@ const config = await loadConfig({
   model: options.model,
 });
 
+let memory = await loadMemory(cwd);
+
 let provider: Provider;
 try {
   provider = createProvider(config);
@@ -123,7 +128,8 @@ let store = resumed
 
 // Rebuilt whenever plan mode is entered or left, so the model's instructions
 // stay in sync with what the tools will actually let it do.
-const systemPromptFor = (planMode: boolean) => buildSystemPrompt({ cwd, skills, planMode });
+const systemPromptFor = (planMode: boolean) =>
+  buildSystemPrompt({ cwd, skills, planMode, memory: formatMemory(memory.files) });
 
 const ctx: AgentContext = {
   provider,
@@ -139,7 +145,7 @@ const ctx: AgentContext = {
 
 const commands = await CommandRegistry.load(cwd);
 
-for (const warning of [...config.warnings, ...skillWarnings, ...mcpWarnings, ...commands.warnings]) {
+for (const warning of [...config.warnings, ...skillWarnings, ...mcpWarnings, ...memory.warnings, ...commands.warnings]) {
   console.warn(`stak: ${warning}`);
 }
 
@@ -175,6 +181,20 @@ const instance = render(
     autoCompact: config.autoCompact,
     autoCompactThreshold: config.autoCompactThreshold,
     onCompacted: (history) => store.compacted(history),
+    // Re-reads from disk on every call rather than returning the stale `let`
+    // snapshot — otherwise /memory (and systemPromptFor, called right after)
+    // would report pre-/init content immediately after the model just wrote
+    // a fresh STAK.md via the write tool, since nothing else observes that
+    // write.
+    listMemory: async () => {
+      memory = await loadMemory(cwd);
+      return memory;
+    },
+    onAppendMemory: async (text: string) => {
+      const result = await appendMemory(cwd, text);
+      memory = await loadMemory(cwd);
+      return result;
+    },
   }),
 );
 

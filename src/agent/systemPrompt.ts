@@ -7,6 +7,8 @@ export interface SystemPromptOptions {
   /** True while write/edit/bash are all refused — steers the model toward
    * research and a written plan instead of retrying blocked actions. */
   planMode?: boolean;
+  /** Freeform memory content, injected as its own section when non-blank. */
+  memory?: string;
 }
 
 export function buildSystemPrompt(options: SystemPromptOptions): string {
@@ -28,6 +30,10 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
       "Invoke one with the Skill tool when the task matches its description.",
       ...options.skills.map((skill) => `- ${skill.name}: ${skill.description}`),
     );
+  }
+
+  if (options.memory && options.memory.trim() !== "") {
+    sections.push("", "# Memory", options.memory.trim());
   }
 
   if (options.planMode) {

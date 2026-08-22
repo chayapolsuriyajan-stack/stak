@@ -6,6 +6,7 @@ import { CommandRegistry, isCommand, parse } from "./dispatch.js";
 import { loadMarkdownCommands } from "./loader.js";
 import type { CommandContext } from "./types.js";
 import type { CompactResult } from "../agent/compact.js";
+import type { LoadedMemory } from "../memory/types.js";
 import type { McpServerStatus } from "../mcp/types.js";
 
 let cwd: string;
@@ -28,6 +29,7 @@ function context(overrides: Partial<CommandContext> = {}) {
     describeModel: () => "ollama test-model",
     listModels: vi.fn(async () => undefined),
     listMcpServers: (): McpServerStatus[] => [],
+    listMemory: async (): Promise<LoadedMemory> => ({ files: [], warnings: [] }),
     compact: vi.fn(
       async (): Promise<CompactResult> => ({
         summary: "test summary",
@@ -214,6 +216,56 @@ describe("builtins", () => {
     if (outcome.kind !== "notice") return;
     expect(outcome.text).toContain("filesystem (project): connected, 4 tools");
     expect(outcome.text).toContain("github (global): failed — connection refused");
+  });
+
+  test("/memory reports when no memory files were loaded", async () => {
+    const registry = await CommandRegistry.load(cwd);
+    const ctx = context();
+
+    const outcome = await registry.run("/memory", ctx);
+
+    expect(outcome.kind).toBe("notice");
+    if (outcome.kind !== "notice") return;
+    expect(outcome.text).toContain("No memory files found");
+  });
+
+  test("/memory lists loaded memory files", async () => {
+    const registry = await CommandRegistry.load(cwd);
+    const ctx = context({
+      listMemory: async (): Promise<LoadedMemory> => ({
+        files: [
+          {
+            path: "STAK.md",
+            source: "project",
+            content: "notes",
+            bytes: 5,
+            truncated: false,
+          },
+        ],
+        warnings: [],
+      }),
+    });
+
+    const outcome = await registry.run("/memory", ctx);
+
+    expect(outcome.kind).toBe("notice");
+    if (outcome.kind !== "notice") return;
+    expect(outcome.text).toContain("STAK.md (project, 5 bytes)");
+  });
+
+  test("/init returns a prompt asking the model to write STAK.md", async () => {
+    const registry = await CommandRegistry.load(cwd);
+    const ctx = context();
+
+    const outcome = await registry.run("/init", ctx);
+
+    expect(outcome.kind).toBe("prompt");
+    if (outcome.kind !== "prompt") return;
+    expect(outcome.text.length).toBeGreaterThan(0);
+    expect(outcome.text).toContain("STAK.md");
+    // Guards against /init silently clobbering a STAK.md the user already
+    // accumulated `# fact` bullets into during the session.
+    expect(outcome.text.toLowerCase()).toContain("already exists");
   });
 
   test("/compact with no argument compacts without a focus", async () => {

@@ -148,6 +148,106 @@ test("auto-compaction fires on its own once context usage crosses the threshold"
   expect(lastFrame()).toContain("Auto-compacted");
 });
 
+test("`# fact` submits an onAppendMemory call instead of a normal turn", async () => {
+  const ctx = makeCtx(fakeProvider(), seedHistory());
+  const streamChatSpy = vi.spyOn(ctx.provider, "streamChat");
+  const onAppendMemory = vi.fn().mockResolvedValue({ path: "/tmp/STAK.md", line: "- stak uses vitest" });
+  const { stdin } = makeApp(ctx, { onAppendMemory });
+  await tick();
+
+  stdin.write("# stak uses vitest");
+  await tick();
+  stdin.write("\r");
+  await tick();
+
+  expect(onAppendMemory).toHaveBeenCalledWith("stak uses vitest");
+  expect(streamChatSpy).not.toHaveBeenCalled();
+});
+
+test("a successful `# fact` append renders a notice in the transcript", async () => {
+  const ctx = makeCtx(fakeProvider(), seedHistory());
+  const onAppendMemory = vi.fn().mockResolvedValue({ path: "/tmp/STAK.md", line: "- stak uses vitest" });
+  const { stdin, lastFrame } = makeApp(ctx, { onAppendMemory });
+  await tick();
+
+  stdin.write("# stak uses vitest");
+  await tick();
+  stdin.write("\r");
+
+  await waitFor(() => (lastFrame() ?? "").includes("Added to STAK.md"));
+  expect(lastFrame()).toContain("Added to STAK.md");
+});
+
+test("`## heading` is not intercepted as a memory shortcut and is sent as a normal message", async () => {
+  const ctx = makeCtx(fakeProvider(), seedHistory());
+  const streamChatSpy = vi.spyOn(ctx.provider, "streamChat");
+  const onAppendMemory = vi.fn();
+  const { stdin } = makeApp(ctx, { onAppendMemory });
+  await tick();
+
+  stdin.write("## just a heading");
+  await tick();
+  stdin.write("\r");
+
+  await waitFor(() => streamChatSpy.mock.calls.length > 0);
+  expect(onAppendMemory).not.toHaveBeenCalled();
+  expect(streamChatSpy).toHaveBeenCalled();
+});
+
+test("a multi-line input whose first line looks like a memory shortcut is sent as a normal message, not truncated", async () => {
+  // Regression test: the old /^#\s+(.+)/ match wasn't anchored to end-of-line
+  // and wasn't gated on single-line input, so a pasted multi-line message
+  // starting with "# Refactor plan" got intercepted — only the first line
+  // was saved as a STAK.md bullet, and everything after it (the user's
+  // actual request) was silently discarded and never sent to the model.
+  const ctx = makeCtx(fakeProvider(), seedHistory());
+  const streamChatSpy = vi.spyOn(ctx.provider, "streamChat");
+  const onAppendMemory = vi.fn();
+  const { stdin, lastFrame } = makeApp(ctx, { onAppendMemory });
+  await tick();
+
+  const multiLine = "# Refactor plan\n\nPlease refactor the auth module to use the new session store.";
+  // Bare "\n" (linefeed) is not ink's "return" key (only "\r" is — see
+  // ink/build/hooks/use-input.js) so ink-text-input appends it as literal
+  // text instead of submitting, the same way a terminal paste with embedded
+  // newlines lands in the input state. A trailing "\r" then submits the
+  // whole multi-line value in one go, exactly reproducing the bug scenario.
+  stdin.write(multiLine);
+  await tick();
+  stdin.write("\r");
+  await tick();
+
+  await waitFor(() => streamChatSpy.mock.calls.length > 0);
+  expect(onAppendMemory).not.toHaveBeenCalled();
+  expect(streamChatSpy).toHaveBeenCalled();
+  expect(lastFrame()).not.toContain("Added to STAK.md");
+});
+
+test("/memory renders the loaded memory files via the listMemory passthrough", async () => {
+  const ctx = makeCtx(fakeProvider(), seedHistory());
+  const listMemory = vi.fn().mockResolvedValue({
+    files: [
+      {
+        path: "/project/STAK.md",
+        source: "project" as const,
+        content: "stak uses vitest",
+        bytes: 16,
+        truncated: false,
+      },
+    ],
+    warnings: [],
+  });
+  const { stdin, lastFrame } = makeApp(ctx, { listMemory });
+  await tick();
+
+  stdin.write("/memory");
+  await tick();
+  stdin.write("\r");
+
+  await waitFor(() => (lastFrame() ?? "").includes("STAK.md"));
+  expect(lastFrame()).toContain("STAK.md");
+});
+
 test("auto-compaction stays off when autoCompact={false}, even over threshold", async () => {
   const ctx = makeCtx(fakeProvider({ inputTokens: 950, contextLength: 1000 }), seedHistory());
   const modelInfoCache = createModelInfoCache();

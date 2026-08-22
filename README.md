@@ -216,6 +216,41 @@ exists; it loads one by calling the `Skill` tool, and the instructions come back
 as the tool result. That works on any provider with native tool-calling, with no
 protocol support of its own.
 
+## Project memory
+
+`STAK.md` is a markdown file whose contents get loaded into the system prompt
+at the start of every session — standing project context (conventions,
+architecture notes, things you don't want to re-explain every conversation)
+the model always has, without you pasting it in.
+
+Loaded from three locations, lowest to highest precedence — later ones win
+where they overlap:
+
+- `~/.stak/STAK.md` — global, applies to every project.
+- `STAK.md` in any ancestor directory between your home directory and the
+  project root — useful in a monorepo where a parent directory holds
+  conventions shared by several sub-projects.
+- `<project root>/STAK.md` — project-specific, most specific and highest
+  precedence. A normal, visible file at the project root (not under
+  `.stak/`), meant to be committed alongside code the way `CLAUDE.md` /
+  `AGENTS.md` files commonly are.
+
+A line containing only `@some/other/file.md` pulls in that file's content in
+place, resolved relative to the importing file's own directory (`~` expands
+to home). Imports nest up to 3 levels deep; a missing file or a cycle is
+skipped with a warning rather than failing the whole load.
+
+Each file is capped at 32 KB after imports are resolved — truncated cleanly
+at a line boundary, with a warning — so one runaway file can't blow out the
+context budget on every turn.
+
+`/memory` lists which files were actually loaded, from where, and flags any
+warnings (missing imports, cycles, truncation). `/init` asks the model to
+survey the current project and write a `STAK.md` for it. Typing `# some fact`
+in the input box (leading `#`, then a space, then text) isn't sent as a
+message — it appends that fact as a bullet to the project's `STAK.md`
+directly and refreshes the system prompt immediately.
+
 ## When a response gets cut off
 
 A reply cut off by the model's context/output limit looks identical to a

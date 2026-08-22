@@ -40,4 +40,44 @@ describe("buildSystemPrompt", () => {
 
     expect(prompt.toLowerCase()).toContain("do not");
   });
+
+  test("omits the memory section when memory is not provided", () => {
+    const withoutMemory = buildSystemPrompt({ cwd: "/p" });
+
+    expect(withoutMemory).not.toContain("# Memory");
+    expect(withoutMemory).toBe(buildSystemPrompt({ cwd: "/p" }));
+  });
+
+  test("omits the memory section when memory is empty or whitespace-only", () => {
+    const baseline = buildSystemPrompt({ cwd: "/p" });
+
+    expect(buildSystemPrompt({ cwd: "/p", memory: "" })).toBe(baseline);
+    expect(buildSystemPrompt({ cwd: "/p", memory: "   " })).toBe(baseline);
+  });
+
+  test("includes memory content after the skills section and before plan mode", () => {
+    const prompt = buildSystemPrompt({
+      cwd: "/p",
+      skills: [{ name: "reviewer", description: "review code for bugs" }],
+      planMode: true,
+      memory: "The user prefers tabs over spaces.",
+    });
+
+    expect(prompt).toContain("# Memory");
+    expect(prompt).toContain("The user prefers tabs over spaces.");
+
+    const skillsIndex = prompt.indexOf("Available skills");
+    const memoryIndex = prompt.indexOf("# Memory");
+    const planModeIndex = prompt.indexOf("Plan mode is active");
+
+    expect(skillsIndex).toBeGreaterThan(-1);
+    expect(memoryIndex).toBeGreaterThan(skillsIndex);
+    expect(planModeIndex).toBeGreaterThan(memoryIndex);
+  });
+
+  test("trims memory content before inserting it", () => {
+    const prompt = buildSystemPrompt({ cwd: "/p", memory: "  trimmed memory  " });
+
+    expect(prompt).toContain("# Memory\ntrimmed memory");
+  });
 });

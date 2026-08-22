@@ -8,6 +8,7 @@ import type { CommandRegistry } from "../commands/dispatch.js";
 import { isCommand } from "../commands/dispatch.js";
 import type { CommandOutcome } from "../commands/types.js";
 import type { McpServerStatus } from "../mcp/types.js";
+import type { LoadedMemory } from "../memory/types.js";
 import { MODE_LABELS, type PermissionManager } from "../permissions/manager.js";
 import type { PermissionMode } from "../permissions/types.js";
 import { InputBox } from "./components/InputBox.js";
@@ -49,6 +50,13 @@ export interface AppProps {
   /** Called after any compaction (manual or automatic) with the resulting
    * history, e.g. so the caller can persist it. */
   onCompacted?: (history: Message[]) => void;
+  /** The project memory files (STAK.md) loaded for this session, surfaced by
+   * /memory. Async so /memory (and any subsequent systemPromptFor call) sees
+   * fresh content re-read from disk rather than a stale snapshot — see
+   * cli.ts's listMemory wiring. */
+  listMemory?: () => Promise<LoadedMemory>;
+  /** Appends a fact to the project's STAK.md, used by the `# fact` shortcut. */
+  onAppendMemory?: (text: string) => Promise<{ path: string; line: string }>;
 }
 
 export function App({
@@ -65,6 +73,8 @@ export function App({
   autoCompact,
   autoCompactThreshold,
   onCompacted,
+  listMemory,
+  onAppendMemory,
 }: AppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
@@ -230,6 +240,7 @@ export function App({
           }
         },
         listMcpServers: () => mcpServers ?? [],
+        listMemory: async () => (await listMemory?.()) ?? { files: [], warnings: [] },
         compact: async (focus) => {
           const result = await compact(focus);
           onCompacted?.(ctx.history);
@@ -268,6 +279,31 @@ export function App({
     const trimmed = value.trim();
     if (trimmed === "" || busy) return;
     setInput("");
+
+    // `# fact` is a memory shortcut, not a slash command — a bare "#" or a
+    // markdown heading ("## ...") falls through to being sent as a message.
+    // Only a genuinely single-line input is eligible: without the no-\n/\r
+    // guard, a pasted multi-line message whose first line happens to start
+    // with "# " (e.g. a markdown heading followed by the actual request)
+    // would have everything after the first line silently discarded instead
+    // of sent — real data loss with no indication anything was dropped.
+    const isSingleLine = !trimmed.includes("\n") && !trimmed.includes("\r");
+    const memoryMatch = isSingleLine ? /^#[^\S\r\n]+(\S.*)$/.exec(trimmed) : null;
+    const memoryText = memoryMatch?.[1]?.trim();
+    if (memoryMatch && memoryText && onAppendMemory) {
+      void onAppendMemory(memoryText)
+        .then((result) => {
+          append({ kind: "notice", text: `Added to STAK.md: ${result.line}` });
+          ctx.systemPrompt = systemPromptFor?.(mode === "plan") ?? ctx.systemPrompt;
+        })
+        .catch((error) => {
+          append({
+            kind: "error",
+            text: error instanceof Error ? error.message : String(error),
+          });
+        });
+      return;
+    }
 
     if (isCommand(trimmed)) {
       void runCommand(trimmed);

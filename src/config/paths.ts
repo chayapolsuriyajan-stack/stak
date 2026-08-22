@@ -38,3 +38,16 @@ export function globalCommandsDir(): string {
 export function projectCommandsDir(cwd: string = process.cwd()): string {
   return path.join(projectDir(cwd), "commands");
 }
+
+export function globalMemoryFile(): string {
+  return path.join(globalDir(), "STAK.md");
+}
+
+/**
+ * Unlike `projectSettingsFile`, this lives directly in the project root, not
+ * inside `.stak/` — a memory file is meant to be a normal, visible,
+ * commonly-committed file, matching how `CLAUDE.md` works in Claude Code.
+ */
+export function projectMemoryFile(cwd: string = process.cwd()): string {
+  return path.join(cwd, "STAK.md");
+}

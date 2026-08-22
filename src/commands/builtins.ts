@@ -1,4 +1,5 @@
 import { describeCompaction } from "../agent/compact.js";
+import { describeMemory } from "../memory/format.js";
 import { MODE_CYCLE, MODE_LABELS } from "../permissions/manager.js";
 import type { Command } from "./types.js";
 
@@ -125,6 +126,27 @@ export const builtinCommands: Command[] = [
       return {
         kind: "notice",
         text: ["MCP servers:", ...lines].join("\n"),
+      };
+    },
+  },
+
+  {
+    name: "memory",
+    description: "show which project memory files (STAK.md) were loaded",
+    source: "builtin",
+    async run(ctx) {
+      return { kind: "notice", text: describeMemory(await ctx.listMemory()) };
+    },
+  },
+
+  {
+    name: "init",
+    description: "ask the model to survey this project and write a STAK.md for it",
+    source: "builtin",
+    run() {
+      return {
+        kind: "prompt",
+        text: "If a STAK.md file already exists at the project root, read it first and improve/extend it in place rather than replacing its content — never discard existing content the user already added. Otherwise, survey this project: its structure, tech stack, conventions, and any existing docs. Then write a concise STAK.md file at the project root summarizing what a future session should know to work effectively here — architecture notes, conventions, and gotchas.",
       };
     },
   },
