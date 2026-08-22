@@ -94,6 +94,36 @@ Environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_HOST`,
 `.stak/settings.json`, which outranks both — but credentials there are ignored
 and warned about, since project files tend to end up in version control.
 
+## MCP servers
+
+stak can connect to [Model Context Protocol](https://modelcontextprotocol.io)
+servers to pull in additional tools alongside its built-in ones.
+
+Configure them under `mcpServers` in either `~/.stak/config.json` (global) or
+a project's `.stak/settings.json` — a project server wins over a global one
+of the same name. Both a stdio (spawned child process) and an HTTP server can
+be listed:
+
+```json
+{
+  "mcpServers": {
+    "filesystem": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."] },
+    "github": { "type": "http", "url": "https://api.example.com/mcp", "headers": { "Authorization": "Bearer ${GH_MCP_TOKEN}" } }
+  }
+}
+```
+
+`${VAR}` and `${VAR:-default}` inside any string value expand against
+environment variables at startup, so a project's `.stak/settings.json` can
+reference a token by name — like `${GH_MCP_TOKEN}` above — without the
+literal secret ever appearing in the file, making it safe to commit.
+
+Run `/mcp` in a session to see each configured server's connection status.
+
+**Windows note:** a bare `npx` or `npm` command is normalized to `npx.cmd` /
+`npm.cmd` automatically, since the MCP SDK spawns processes without a shell
+and the bare command would otherwise fail to launch.
+
 ## Permission modes
 
 Every command and file change passes a permission gate before it runs.
@@ -138,6 +168,12 @@ sense of safety rather than a real one.
 Session transcripts (`.stak/sessions/`) can contain whatever the model read
 or wrote, including file contents from your project — review before sharing
 one or committing `.stak/`.
+
+Every tool an MCP server provides is gated exactly like `bash` — it always
+prompts in `ask`/`accept-edits` and is always refused in `plan` mode, with no
+finer-grained tier. stak has no way to verify what a remote server's tool
+actually does under the hood, so it treats all of them as unsandboxed by
+default; this is deliberate, not a gap.
 
 ## Commands and skills
 
@@ -198,9 +234,3 @@ npm run dev        # run from source
 npm test           # run the test suite
 npm run typecheck  # check types
 ```
-
-## Not implemented
-
-MCP servers. Tool definitions already carry plain JSON Schema regardless of
-where they came from, so MCP tools can register through the same path without
-the provider adapters changing.

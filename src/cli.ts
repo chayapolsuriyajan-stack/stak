@@ -8,6 +8,7 @@ import { buildSystemPrompt } from "./agent/systemPrompt.js";
 import type { Message } from "./agent/types.js";
 import { CommandRegistry } from "./commands/dispatch.js";
 import { loadConfig } from "./config/load.js";
+import { connectMcpServers } from "./mcp/client.js";
 import { PermissionManager } from "./permissions/manager.js";
 import { createProvider } from "./providers/registry.js";
 import type { Provider } from "./providers/types.js";
@@ -81,10 +82,14 @@ try {
 
 const permissions = new PermissionManager(config.permissionMode, cwd);
 const { skills, warnings: skillWarnings } = await loadSkills(cwd);
+const mcp = await connectMcpServers(config.mcpServers);
+const mcpWarnings = mcp.statuses
+  .filter((status) => status.state === "failed")
+  .map((status) => `MCP server "${status.name}" failed to connect: ${status.error}`);
 const tools = new ToolRegistry({
   cwd,
   permissions,
-  extra: [createSkillTool(skills) as unknown as AnyTool],
+  extra: [createSkillTool(skills) as unknown as AnyTool, ...mcp.tools],
 });
 
 // --resume with no id shows a picker built after the TUI mounts, since it
@@ -134,7 +139,7 @@ const ctx: AgentContext = {
 
 const commands = await CommandRegistry.load(cwd);
 
-for (const warning of [...config.warnings, ...skillWarnings, ...commands.warnings]) {
+for (const warning of [...config.warnings, ...skillWarnings, ...mcpWarnings, ...commands.warnings]) {
   console.warn(`stak: ${warning}`);
 }
 
@@ -150,7 +155,7 @@ async function resumeSession(session: SessionSummary): Promise<DisplayMessage[]>
   return toDisplayMessages(loaded.history);
 }
 
-render(
+const instance = render(
   React.createElement(Root, {
     mode: showPicker ? "picker" : "direct",
     sessions,
@@ -163,8 +168,12 @@ render(
     onResumeSession: resumeSession,
     systemPromptFor,
     modelInfoCache: createModelInfoCache(),
+    mcpServers: mcp.statuses,
     onNewSession: () => {
       store = new SessionStore({ provider: provider.name, model: ctx.model, cwd });
     },
   }),
 );
+
+await instance.waitUntilExit();
+await mcp.close();

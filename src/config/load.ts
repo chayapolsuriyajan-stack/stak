@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { mergeMcpServers, parseMcpServers } from "../mcp/config.js";
 import { MODE_CYCLE } from "../permissions/manager.js";
 import type { ProviderName } from "../providers/types.js";
 import { globalConfigFile, projectSettingsFile } from "./paths.js";
@@ -51,6 +52,12 @@ export async function loadConfig(options: LoadOptions = {}): Promise<ResolvedCon
   }
 
   const env = process.env;
+
+  const globalMcp = parseMcpServers(global, "global", env);
+  const projectMcp = parseMcpServers(project, "project", env);
+  warnings.push(...globalMcp.warnings, ...projectMcp.warnings);
+  const mcpServers = mergeMcpServers(globalMcp.servers, projectMcp.servers);
+
   const envModel = env["STAK_MODEL"];
   const envProvider = env["STAK_PROVIDER"];
 
@@ -72,6 +79,7 @@ export async function loadConfig(options: LoadOptions = {}): Promise<ResolvedCon
     anthropicApiKey: env["ANTHROPIC_API_KEY"] ?? global?.anthropicApiKey,
     openaiApiKey: env["OPENAI_API_KEY"] ?? global?.openaiApiKey,
     ollamaHost: env["OLLAMA_HOST"] ?? global?.ollamaHost ?? "http://localhost:11434",
+    mcpServers,
     warnings,
   };
 }

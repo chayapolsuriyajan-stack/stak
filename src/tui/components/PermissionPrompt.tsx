@@ -53,6 +53,9 @@ export function PermissionPrompt({ request, onDecide }: PermissionPromptProps) {
   );
 }
 
+/** Matches the 80-char truncation toolSummary.ts applies for the transcript view. */
+const MAX_ARGS_JSON_LENGTH = 80;
+
 function describe(request: PermissionRequest): string {
   const args = request.args as Record<string, unknown>;
 
@@ -64,5 +67,15 @@ function describe(request: PermissionRequest): string {
     return `${request.toolName} ${args["path"]}`;
   }
 
-  return `${request.toolName} ${JSON.stringify(args)}`;
+  return `${request.toolName} ${truncatedJson(args)}`;
+}
+
+/**
+ * A large argument payload — most likely from an MCP tool, whose args are
+ * opaque JSON rather than one of the known shapes handled above — must not
+ * blow out the permission prompt box unbounded.
+ */
+function truncatedJson(args: Record<string, unknown>): string {
+  const json = JSON.stringify(args);
+  return json.length > MAX_ARGS_JSON_LENGTH ? `${json.slice(0, MAX_ARGS_JSON_LENGTH - 3)}...` : json;
 }

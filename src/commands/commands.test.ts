@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { CommandRegistry, isCommand, parse } from "./dispatch.js";
 import { loadMarkdownCommands } from "./loader.js";
 import type { CommandContext } from "./types.js";
+import type { McpServerStatus } from "../mcp/types.js";
 
 let cwd: string;
 
@@ -25,6 +26,7 @@ function context(overrides: Partial<CommandContext> = {}) {
     getModel: () => "test-model",
     describeModel: () => "ollama test-model",
     listModels: vi.fn(async () => undefined),
+    listMcpServers: (): McpServerStatus[] => [],
     ...overrides,
   };
 }
@@ -168,6 +170,40 @@ describe("builtins", () => {
 
     expect(outcome.kind).toBe("notice");
     expect(ctx.setPermissionMode).toHaveBeenCalledWith("auto-bypass");
+  });
+
+  test("/mcp reports when no servers are configured", async () => {
+    const registry = await CommandRegistry.load(cwd);
+    const ctx = context();
+
+    const outcome = await registry.run("/mcp", ctx);
+
+    expect(outcome.kind).toBe("notice");
+    if (outcome.kind !== "notice") return;
+    expect(outcome.text).toContain("No MCP servers configured");
+  });
+
+  test("/mcp formats connected and failed servers", async () => {
+    const registry = await CommandRegistry.load(cwd);
+    const ctx = context({
+      listMcpServers: (): McpServerStatus[] => [
+        { name: "filesystem", source: "project", state: "connected", toolCount: 4 },
+        {
+          name: "github",
+          source: "global",
+          state: "failed",
+          toolCount: 0,
+          error: "connection refused",
+        },
+      ],
+    });
+
+    const outcome = await registry.run("/mcp", ctx);
+
+    expect(outcome.kind).toBe("notice");
+    if (outcome.kind !== "notice") return;
+    expect(outcome.text).toContain("filesystem (project): connected, 4 tools");
+    expect(outcome.text).toContain("github (global): failed — connection refused");
   });
 
   test("/exit asks the app to quit", async () => {

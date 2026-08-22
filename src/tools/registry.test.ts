@@ -2,8 +2,10 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
+import { z } from "zod";
 import { PermissionManager } from "../permissions/manager.js";
 import { ToolRegistry } from "./registry.js";
+import type { AnyTool } from "./types.js";
 
 let cwd: string;
 
@@ -15,9 +17,9 @@ afterEach(async () => {
   await fs.rm(cwd, { recursive: true, force: true });
 });
 
-function registry(mode: "ask" | "accept-edits" | "auto-bypass") {
+function registry(mode: "ask" | "accept-edits" | "auto-bypass", extra?: AnyTool[]) {
   const permissions = new PermissionManager(mode, cwd);
-  return { registry: new ToolRegistry({ cwd, permissions }), permissions };
+  return { registry: new ToolRegistry({ cwd, permissions, extra }), permissions };
 }
 
 test("exposes every built-in tool with a JSON schema", () => {
@@ -29,6 +31,50 @@ test("exposes every built-in tool with a JSON schema", () => {
     expect(definition.jsonSchema).toHaveProperty("type", "object");
     expect(definition.description).not.toBe("");
   }
+});
+
+test("prefers an explicit jsonSchema over the zod-derived one", () => {
+  const fakeTool = {
+    name: "fake-mcp-tool",
+    description: "a tool with a provider-supplied schema",
+    schema: z.object({}).passthrough(),
+    jsonSchema: { type: "object", properties: { foo: { type: "string" } } },
+    riskTier: "read-only",
+    async execute() {
+      return { output: "" };
+    },
+  } as unknown as AnyTool;
+
+  const { registry: tools } = registry("auto-bypass", [fakeTool]);
+
+  const definition = tools.definitions().find((d) => d.name === fakeTool.name);
+
+  expect(definition?.jsonSchema).toEqual({
+    type: "object",
+    properties: { foo: { type: "string" } },
+  });
+});
+
+test("derives jsonSchema via zodToJsonSchema when jsonSchema is absent", () => {
+  const fakeTool = {
+    name: "fake-zod-only-tool",
+    description: "a tool without a provider-supplied schema",
+    schema: z.object({ bar: z.string() }),
+    riskTier: "read-only",
+    async execute() {
+      return { output: "" };
+    },
+  } as unknown as AnyTool;
+
+  const { registry: tools } = registry("auto-bypass", [fakeTool]);
+
+  const definition = tools.definitions().find((d) => d.name === fakeTool.name);
+
+  expect(definition?.jsonSchema).toMatchObject({
+    type: "object",
+    properties: { bar: { type: "string" } },
+    required: ["bar"],
+  });
 });
 
 test("a denied call leaves the filesystem untouched", async () => {

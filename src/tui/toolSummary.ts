@@ -11,6 +11,21 @@
 export function summarizeToolCall(name: string, input: unknown): string {
   const args = (input ?? {}) as Record<string, unknown>;
 
+  if (name.startsWith("mcp__")) {
+    // Names come from mcpToolName: "mcp__" + server + "__" + tool, with
+    // non-alphanumeric characters in either part sanitized to "_". Splitting
+    // on the first "__" after the prefix is correct for the overwhelming
+    // majority of real server/tool names, which don't themselves contain a
+    // literal double underscore.
+    const rest = name.slice("mcp__".length);
+    const separator = rest.indexOf("__");
+    if (separator !== -1) {
+      const server = rest.slice(0, separator);
+      const tool = rest.slice(separator + 2);
+      return `${server}/${tool} ${rawFallback(args)}`;
+    }
+  }
+
   switch (name) {
     case "read":
     case "write":

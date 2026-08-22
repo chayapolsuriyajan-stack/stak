@@ -5,6 +5,7 @@ import type { ModelInfoCache } from "../agent/modelInfo.js";
 import type { CommandRegistry } from "../commands/dispatch.js";
 import { isCommand } from "../commands/dispatch.js";
 import type { CommandOutcome } from "../commands/types.js";
+import type { McpServerStatus } from "../mcp/types.js";
 import { MODE_LABELS, type PermissionManager } from "../permissions/manager.js";
 import type { PermissionMode } from "../permissions/types.js";
 import { InputBox } from "./components/InputBox.js";
@@ -35,6 +36,8 @@ export interface AppProps {
   /** Shared across the process so a repeated /model switch back to a
    * previously-seen model doesn't re-query the provider. */
   modelInfoCache?: ModelInfoCache;
+  /** Status of configured MCP servers, surfaced by /mcp. */
+  mcpServers?: McpServerStatus[];
 }
 
 export function App({
@@ -47,6 +50,7 @@ export function App({
   onNewSession,
   systemPromptFor,
   modelInfoCache,
+  mcpServers,
 }: AppProps) {
   const { exit } = useApp();
   const { stdout } = useStdout();
@@ -155,6 +159,7 @@ export function App({
             return undefined;
           }
         },
+        listMcpServers: () => mcpServers ?? [],
       });
     } catch (error) {
       // A command that throws for any other reason should not take the whole

@@ -45,4 +45,22 @@ describe("summarizeToolCall", () => {
     expect(long.length).toBeLessThanOrEqual(80);
     expect(long.endsWith("...")).toBe(true);
   });
+
+  test("summarizes an MCP tool call as server/tool plus its compact args", () => {
+    expect(summarizeToolCall("mcp__filesystem__read_file", { path: "a.txt" })).toBe(
+      'filesystem/read_file {"path":"a.txt"}',
+    );
+  });
+
+  test("summarizes an MCP tool call with an unambiguous server/tool name", () => {
+    expect(summarizeToolCall("mcp__github__create_issue", { title: "bug" })).toBe(
+      'github/create_issue {"title":"bug"}',
+    );
+  });
+
+  test("leaves non-MCP tool summaries unaffected", () => {
+    expect(summarizeToolCall("read", { path: "src/cli.ts" })).toBe("src/cli.ts");
+    expect(summarizeToolCall("bash", { command: "npm test" })).toBe("npm test");
+    expect(summarizeToolCall("mystery", { a: 1, b: 2 })).toBe('{"a":1,"b":2}');
+  });
 });

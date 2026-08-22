@@ -8,6 +8,7 @@ function config(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
     model: "test-model",
     permissionMode: "ask",
     ollamaHost: "http://localhost:11434",
+    mcpServers: [],
     warnings: [],
     ...overrides,
   };

@@ -1,3 +1,5 @@
+import type { McpServerStatus } from "../mcp/types.js";
+
 /** What running a command asks the app to do. */
 export type CommandOutcome =
   /** Nothing further; the command already did its work through its effects. */
@@ -22,6 +24,8 @@ export interface CommandContext {
   /** The active provider's known models, or undefined if it cannot list them. */
   listModels: () => Promise<string[] | undefined>;
   listCommands: () => { name: string; description: string }[];
+  /** Status of every configured MCP server, global and project. */
+  listMcpServers: () => McpServerStatus[];
 }
 
 export interface Command {

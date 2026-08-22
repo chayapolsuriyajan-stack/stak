@@ -100,6 +100,35 @@ export const builtinCommands: Command[] = [
   },
 
   {
+    name: "mcp",
+    description: "show configured MCP servers",
+    source: "builtin",
+    run(ctx) {
+      const servers = ctx.listMcpServers();
+
+      if (servers.length === 0) {
+        return {
+          kind: "notice",
+          text: "No MCP servers configured. Add them under `mcpServers` in ~/.stak/config.json or .stak/settings.json.",
+        };
+      }
+
+      const lines = servers.map((server) => {
+        const status =
+          server.state === "connected"
+            ? `connected, ${server.toolCount} tools`
+            : `failed — ${server.error ?? "unknown error"}`;
+        return `  ${server.name} (${server.source}): ${status}`;
+      });
+
+      return {
+        kind: "notice",
+        text: ["MCP servers:", ...lines].join("\n"),
+      };
+    },
+  },
+
+  {
     name: "exit",
     description: "exit stak",
     source: "builtin",

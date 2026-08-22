@@ -122,3 +122,62 @@ describe("guardrails", () => {
     expect(config.warnings).toEqual([]);
   });
 });
+
+// Global config (~/.stak/config.json) is resolved via os.homedir() with no
+// cwd-relative override in src/config/paths.ts, so — unlike project
+// settings — it cannot be pointed at a temp directory without touching the
+// real user's home directory. Global-sourced mcpServers merging is covered
+// instead by parseMcpServers/mergeMcpServers unit tests in
+// src/mcp/config.test.ts; the tests below stick to what loadConfig can
+// safely exercise through project settings alone.
+describe("mcpServers", () => {
+  test("is an empty array when no mcpServers key is present", async () => {
+    const config = await loadConfig({ cwd });
+
+    expect(config.mcpServers).toEqual([]);
+  });
+
+  test("parses project-only mcpServers into ResolvedConfig.mcpServers", async () => {
+    await writeProjectSettings({
+      mcpServers: {
+        docs: { command: "docs-server" },
+      },
+    });
+
+    const config = await loadConfig({ cwd });
+
+    expect(config.mcpServers).toEqual([
+      { name: "docs", source: "project", config: { type: "stdio", command: "docs-server" } },
+    ]);
+    expect(config.warnings).toEqual([]);
+  });
+
+  test("a malformed project mcpServers entry produces a warning but does not crash loadConfig", async () => {
+    await writeProjectSettings({
+      mcpServers: {
+        broken: { type: "http" },
+      },
+    });
+
+    const config = await loadConfig({ cwd });
+
+    expect(config.mcpServers).toEqual([]);
+    expect(config.warnings.join(" ")).toContain("broken");
+  });
+
+  test("mcpServers is not flagged by the secret-leak warning", async () => {
+    // Set so this test only exercises the secret-leak check, not the
+    // separate (and separately tested, in src/mcp/config.test.ts)
+    // missing-env-var warning that a genuinely unset ref would now produce.
+    process.env["SOME_TOKEN"] = "set-for-this-test";
+    await writeProjectSettings({
+      mcpServers: {
+        docs: { command: "docs-server", env: { TOKEN: "${SOME_TOKEN}" } },
+      },
+    });
+
+    const config = await loadConfig({ cwd });
+
+    expect(config.warnings).toEqual([]);
+  });
+});

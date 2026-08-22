@@ -1,3 +1,4 @@
+import type { McpServerConfig, NamedMcpServer } from "../mcp/types.js";
 import type { ProviderName } from "../providers/types.js";
 
 /**
@@ -15,6 +16,7 @@ export interface GlobalConfig {
   anthropicApiKey?: string;
   openaiApiKey?: string;
   ollamaHost?: string;
+  mcpServers?: Record<string, McpServerConfig>;
 }
 
 /** Shape of .stak/settings.json — per project, never secrets. */
@@ -22,6 +24,7 @@ export interface ProjectSettings {
   defaultProvider?: ProviderName;
   defaultModel?: string;
   permissionMode?: PermissionMode;
+  mcpServers?: Record<string, McpServerConfig>;
 }
 
 /** Fully merged runtime configuration. */
@@ -32,6 +35,7 @@ export interface ResolvedConfig {
   anthropicApiKey?: string;
   openaiApiKey?: string;
   ollamaHost: string;
+  mcpServers: NamedMcpServer[];
   /** Non-fatal problems worth surfacing once the UI is up. */
   warnings: string[];
 }

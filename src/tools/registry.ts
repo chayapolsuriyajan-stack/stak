@@ -52,10 +52,12 @@ export class ToolRegistry {
     return [...this.tools.values()].map((tool) => ({
       name: tool.name,
       description: tool.description,
-      jsonSchema: zodToJsonSchema(tool.schema, {
-        target: "jsonSchema7",
-        $refStrategy: "none",
-      }) as Record<string, unknown>,
+      jsonSchema:
+        tool.jsonSchema ??
+        (zodToJsonSchema(tool.schema, {
+          target: "jsonSchema7",
+          $refStrategy: "none",
+        }) as Record<string, unknown>),
     }));
   }
 
