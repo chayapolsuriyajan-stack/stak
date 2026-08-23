@@ -177,7 +177,11 @@ describe("--permission-mode", () => {
 });
 
 describe("permission-mode validation", () => {
-  const base = { print: true, positional: ["hi"], resumePicker: false } as const;
+  const base: Partial<RawInvocation> = {
+    print: true,
+    positional: ["hi"],
+    resumePicker: false,
+  };
 
   test("accepts plan/build/auto", () => {
     for (const permissionMode of ["plan", "build", "auto"] as const) {

@@ -178,10 +178,10 @@ describe("builtins", () => {
     const registry = await CommandRegistry.load(cwd);
     const ctx = context();
 
-    const outcome = await registry.run("/permissions auto-bypass", ctx);
+    const outcome = await registry.run("/permissions auto", ctx);
 
     expect(outcome.kind).toBe("notice");
-    expect(ctx.setPermissionMode).toHaveBeenCalledWith("auto-bypass");
+    expect(ctx.setPermissionMode).toHaveBeenCalledWith("auto");
   });
 
   test("/mcp reports when no servers are configured", async () => {

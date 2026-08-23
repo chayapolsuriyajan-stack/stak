@@ -17,13 +17,13 @@ afterEach(async () => {
   await fs.rm(cwd, { recursive: true, force: true });
 });
 
-function registry(mode: "ask" | "accept-edits" | "auto-bypass", extra?: AnyTool[]) {
+function registry(mode: "plan" | "build" | "auto", extra?: AnyTool[]) {
   const permissions = new PermissionManager(mode, cwd);
   return { registry: new ToolRegistry({ cwd, permissions, extra }), permissions };
 }
 
 test("exposes every built-in tool with a JSON schema", () => {
-  const definitions = registry("auto-bypass").registry.definitions();
+  const definitions = registry("auto").registry.definitions();
   const names = definitions.map((d) => d.name).sort();
 
   expect(names).toEqual(["bash", "edit", "glob", "grep", "read", "write"]);
@@ -45,7 +45,7 @@ test("prefers an explicit jsonSchema over the zod-derived one", () => {
     },
   } as unknown as AnyTool;
 
-  const { registry: tools } = registry("auto-bypass", [fakeTool]);
+  const { registry: tools } = registry("auto", [fakeTool]);
 
   const definition = tools.definitions().find((d) => d.name === fakeTool.name);
 
@@ -66,7 +66,7 @@ test("derives jsonSchema via zodToJsonSchema when jsonSchema is absent", () => {
     },
   } as unknown as AnyTool;
 
-  const { registry: tools } = registry("auto-bypass", [fakeTool]);
+  const { registry: tools } = registry("auto", [fakeTool]);
 
   const definition = tools.definitions().find((d) => d.name === fakeTool.name);
 
@@ -78,12 +78,13 @@ test("derives jsonSchema via zodToJsonSchema when jsonSchema is absent", () => {
 });
 
 test("a denied call leaves the filesystem untouched", async () => {
-  const { registry: tools, permissions } = registry("ask");
+  const { registry: tools, permissions } = registry("build");
   permissions.setPrompter(async () => "denied");
 
+  // In build mode only bash still prompts, so denial is exercised there.
   const result = await tools.execute({
-    name: "write",
-    input: { path: "blocked.txt", content: "should not exist" },
+    name: "bash",
+    input: { command: "echo should-not-run > blocked.txt" },
   });
 
   expect(result.isError).toBe(true);
@@ -92,7 +93,7 @@ test("a denied call leaves the filesystem untouched", async () => {
 });
 
 test("an approved call runs", async () => {
-  const { registry: tools, permissions } = registry("ask");
+  const { registry: tools, permissions } = registry("build");
   permissions.setPrompter(async () => "approved");
 
   const result = await tools.execute({
@@ -105,7 +106,7 @@ test("an approved call runs", async () => {
 });
 
 test("rejects malformed arguments before reaching the tool", async () => {
-  const { registry: tools } = registry("auto-bypass");
+  const { registry: tools } = registry("auto");
 
   const result = await tools.execute({ name: "read", input: { wrong: "shape" } });
 
@@ -114,7 +115,7 @@ test("rejects malformed arguments before reaching the tool", async () => {
 });
 
 test("reports an unknown tool without throwing", async () => {
-  const { registry: tools } = registry("auto-bypass");
+  const { registry: tools } = registry("auto");
 
   const result = await tools.execute({ name: "nonexistent", input: {} });
 
@@ -123,7 +124,7 @@ test("reports an unknown tool without throwing", async () => {
 });
 
 test("forwards an abort signal through to the tool's execute context", async () => {
-  const { registry: tools } = registry("auto-bypass");
+  const { registry: tools } = registry("auto");
   const controller = new AbortController();
 
   // bashTool has real abort-handling code (ctx.signal?.addEventListener) that

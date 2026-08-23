@@ -5,6 +5,7 @@
 import { runTurn } from "./agent/loop.js";
 import { buildSystemPrompt } from "./agent/systemPrompt.js";
 import type { Message } from "./agent/types.js";
+import type { PermissionMode } from "./config/types.js";
 import { PermissionManager } from "./permissions/manager.js";
 import { findLatestSession, loadSession } from "./sessions/resume.js";
 import { SessionStore } from "./sessions/store.js";
@@ -41,12 +42,11 @@ if (providerName === "anthropic") {
 
 const cwd = process.cwd();
 // The harness has no UI to prompt with, so it defaults to unattended; set
-// STAK_PERMISSION_MODE to exercise plan/ask/accept-edits instead.
-const permissionMode = (process.env["STAK_PERMISSION_MODE"] ?? "auto-bypass") as
+// STAK_PERMISSION_MODE to exercise plan/build instead.
+const permissionMode = (process.env["STAK_PERMISSION_MODE"] ?? "auto") as
   | "plan"
-  | "ask"
-  | "accept-edits"
-  | "auto-bypass";
+  | "build"
+  | "auto";
 const permissions = new PermissionManager(permissionMode, cwd);
 const { skills } = await loadSkills(cwd);
 const tools = new ToolRegistry({
@@ -73,7 +73,11 @@ if (resumed) {
 const ctx = {
   provider,
   model,
-  systemPrompt: buildSystemPrompt({ cwd, skills, planMode: permissionMode === "plan" }),
+  systemPrompt: buildSystemPrompt({
+    cwd,
+    skills,
+    permissionMode: permissionMode as PermissionMode,
+  }),
   history,
   tools: tools.definitions(),
   executeTool: (call: { id: string; name: string; input: unknown }) =>

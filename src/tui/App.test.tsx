@@ -82,7 +82,7 @@ function makeCtx(provider: Provider, history: Message[]): AgentContext {
 }
 
 function makeApp(ctx: AgentContext, extra: Partial<AppProps> = {}) {
-  const permissions = new PermissionManager("ask", os.tmpdir());
+  const permissions = new PermissionManager("build", os.tmpdir());
   const commands = new CommandRegistry(builtinCommands);
   return render(
     <App

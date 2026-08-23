@@ -6,7 +6,7 @@ function config(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
   return {
     provider: "ollama",
     model: "test-model",
-    permissionMode: "ask",
+    permissionMode: "build",
     ollamaHost: "http://localhost:11434",
     mcpServers: [],
     autoCompact: true,

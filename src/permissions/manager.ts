@@ -46,7 +46,7 @@ export class PermissionManager {
 
   async cycleMode(): Promise<PermissionMode> {
     const next = MODE_CYCLE[(MODE_CYCLE.indexOf(this.mode) + 1) % MODE_CYCLE.length];
-    await this.setMode(next ?? "ask");
+    await this.setMode(next ?? "build");
     return this.mode;
   }
 

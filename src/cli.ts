@@ -187,17 +187,22 @@ let store = resumed
   ? SessionStore.resuming(sessionMeta, resumed)
   : new SessionStore(sessionMeta);
 
-// Rebuilt whenever plan mode is entered or left, so the model's instructions
+// Rebuilt whenever the permission mode changes, so the model's instructions
 // stay in sync with what the tools will actually let it do.
-const systemPromptFor = (planMode: boolean) =>
-  buildSystemPrompt({ cwd, skills, planMode, memory: formatMemory(memory.files) });
+const systemPromptFor = (mode: PermissionMode) =>
+  buildSystemPrompt({
+    cwd,
+    skills,
+    permissionMode: mode,
+    memory: formatMemory(memory.files),
+  });
 
 const ctx: AgentContext = {
   provider,
   model,
   // The catalog goes in the prompt so the model knows a skill exists before it
   // has any reason to call the tool.
-  systemPrompt: systemPromptFor(permissions.getMode() === "plan"),
+  systemPrompt: systemPromptFor(permissions.getMode()),
   history,
   tools: tools.definitions(),
   executeTool: (call, signal) => tools.execute(call, signal),

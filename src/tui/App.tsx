@@ -35,7 +35,7 @@ export interface AppProps {
   /** Rebuilds the system prompt for a given plan-mode state, so entering or
    * leaving plan mode keeps the model's instructions in sync with what the
    * tools will actually let it do. */
-  systemPromptFor?: (planMode: boolean) => string;
+  systemPromptFor?: (mode: PermissionMode) => string;
   /** Shared across the process so a repeated /model switch back to a
    * previously-seen model doesn't re-query the provider. */
   modelInfoCache?: ModelInfoCache;
@@ -110,7 +110,7 @@ export function App({
 
   const applyMode = (next: PermissionMode) => {
     setMode(next);
-    ctx.systemPrompt = systemPromptFor?.(next === "plan") ?? ctx.systemPrompt;
+    ctx.systemPrompt = systemPromptFor?.(next) ?? ctx.systemPrompt;
   };
 
   const autoCompactingRef = useRef(false);
@@ -294,7 +294,7 @@ export function App({
       void onAppendMemory(memoryText)
         .then((result) => {
           append({ kind: "notice", text: `Added to STAK.md: ${result.line}` });
-          ctx.systemPrompt = systemPromptFor?.(mode === "plan") ?? ctx.systemPrompt;
+          ctx.systemPrompt = systemPromptFor?.(mode) ?? ctx.systemPrompt;
         })
         .catch((error) => {
           append({
