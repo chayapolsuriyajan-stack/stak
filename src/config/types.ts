@@ -1,3 +1,4 @@
+import type { PhaseHooks, HooksConfig } from "../hooks/config.js";
 import type { McpServerConfig, NamedMcpServer } from "../mcp/types.js";
 import type { ProviderName } from "../providers/types.js";
 
@@ -17,6 +18,7 @@ export interface GlobalConfig {
   openaiApiKey?: string;
   ollamaHost?: string;
   mcpServers?: Record<string, McpServerConfig>;
+  hooks?: HooksConfig;
   autoCompact?: boolean;
   autoCompactThreshold?: number;
 }
@@ -27,6 +29,7 @@ export interface ProjectSettings {
   defaultModel?: string;
   permissionMode?: PermissionMode;
   mcpServers?: Record<string, McpServerConfig>;
+  hooks?: HooksConfig;
   autoCompact?: boolean;
   autoCompactThreshold?: number;
 }
@@ -40,6 +43,7 @@ export interface ResolvedConfig {
   openaiApiKey?: string;
   ollamaHost: string;
   mcpServers: NamedMcpServer[];
+  hooks: PhaseHooks;
   autoCompact: boolean;
   autoCompactThreshold: number;
   /** Non-fatal problems worth surfacing once the UI is up. */

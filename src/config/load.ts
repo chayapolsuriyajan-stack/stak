@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { mergeHooks, parseHooks } from "../hooks/config.js";
 import { mergeMcpServers, parseMcpServers } from "../mcp/config.js";
 import { MODE_CYCLE } from "../permissions/manager.js";
 import type { ProviderName } from "../providers/types.js";
@@ -58,6 +59,11 @@ export async function loadConfig(options: LoadOptions = {}): Promise<ResolvedCon
   warnings.push(...globalMcp.warnings, ...projectMcp.warnings);
   const mcpServers = mergeMcpServers(globalMcp.servers, projectMcp.servers);
 
+  const globalHooks = parseHooks(global, "global");
+  const projectHooks = parseHooks(project, "project");
+  warnings.push(...globalHooks.warnings, ...projectHooks.warnings);
+  const hooks = mergeHooks(globalHooks.hooks, projectHooks.hooks);
+
   const envModel = env["STAK_MODEL"];
   const envProvider = env["STAK_PROVIDER"];
 
@@ -80,6 +86,7 @@ export async function loadConfig(options: LoadOptions = {}): Promise<ResolvedCon
     openaiApiKey: env["OPENAI_API_KEY"] ?? global?.openaiApiKey,
     ollamaHost: env["OLLAMA_HOST"] ?? global?.ollamaHost ?? "http://localhost:11434",
     mcpServers,
+    hooks,
     autoCompact: project?.autoCompact ?? global?.autoCompact ?? true,
     autoCompactThreshold: coerceThreshold(
       project?.autoCompactThreshold ?? global?.autoCompactThreshold,

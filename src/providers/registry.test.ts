@@ -9,6 +9,7 @@ function config(overrides: Partial<ResolvedConfig> = {}): ResolvedConfig {
     permissionMode: "build",
     ollamaHost: "http://localhost:11434",
     mcpServers: [],
+    hooks: { beforeTool: [], afterTool: [] },
     autoCompact: true,
     autoCompactThreshold: 0.85,
     warnings: [],
