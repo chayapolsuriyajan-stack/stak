@@ -152,7 +152,7 @@ describe("resolveInvocation", () => {
 
 describe("--permission-mode", () => {
   test("no --print, but --permission-mode given -> error naming the dependency", () => {
-    const result = resolveInvocation(raw({ permissionMode: "auto-bypass" }));
+    const result = resolveInvocation(raw({ permissionMode: "auto" }));
     expect(result.mode).toBe("error");
     expect((result as { message: string }).message).toMatch(/--permission-mode/);
     expect((result as { message: string }).message).toMatch(/--print/);
@@ -160,18 +160,56 @@ describe("--permission-mode", () => {
 
   test("--print --permission-mode is carried through onto the print invocation", () => {
     const result = resolveInvocation(
-      raw({ print: true, positional: ["hi"], permissionMode: "auto-bypass" }),
+      raw({ print: true, positional: ["hi"], permissionMode: "auto" }),
     );
     expect(result).toEqual({
       mode: "print",
       prompt: "hi",
       format: "text",
-      permissionMode: "auto-bypass",
+      permissionMode: "auto",
     });
   });
 
   test("--print without --permission-mode does not add the field", () => {
     const result = resolveInvocation(raw({ print: true, positional: ["hi"] }));
     expect(result).toEqual({ mode: "print", prompt: "hi", format: "text" });
+  });
+});
+
+describe("permission-mode validation", () => {
+  const base = { print: true, positional: ["hi"], resumePicker: false } as const;
+
+  test("accepts plan/build/auto", () => {
+    for (const permissionMode of ["plan", "build", "auto"] as const) {
+      const result = resolveInvocation(raw({ ...base, permissionMode }));
+      expect(result).toMatchObject({ mode: "print", permissionMode });
+    }
+  });
+
+  test("rejects auto-bypass with a hint toward auto", () => {
+    const result = resolveInvocation(
+      raw({ ...base, permissionMode: "auto-bypass" }),
+    );
+    expect(result.mode).toBe("error");
+    if (result.mode === "error") {
+      expect(result.message).toContain("auto-bypass");
+      expect(result.message).toContain('"auto"');
+    }
+  });
+
+  test("rejects accept-edits with a hint toward build", () => {
+    const result = resolveInvocation(
+      raw({ ...base, permissionMode: "accept-edits" }),
+    );
+    expect(result.mode).toBe("error");
+    if (result.mode === "error") expect(result.message).toContain('"build"');
+  });
+
+  test("rejects fully unknown values listing valid ones", () => {
+    const result = resolveInvocation(raw({ ...base, permissionMode: "yolo" }));
+    expect(result.mode).toBe("error");
+    if (result.mode === "error") {
+      expect(result.message).toContain("plan, build, auto");
+    }
   });
 });

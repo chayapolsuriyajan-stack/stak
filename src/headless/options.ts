@@ -14,6 +14,15 @@ export type OutputFormat = "text" | "json" | "stream-json";
 
 export const OUTPUT_FORMATS: readonly OutputFormat[] = ["text", "json", "stream-json"];
 
+export const PERMISSION_MODES = ["plan", "build", "auto"] as const;
+
+/** Removed v0.2 mode names → what to tell the user to use instead. */
+const LEGACY_PERMISSION_MODES: Record<string, string> = {
+  ask: "build",
+  "accept-edits": "build",
+  "auto-bypass": "auto",
+};
+
 export interface RawInvocation {
   print?: boolean;
   outputFormat?: string;
@@ -74,6 +83,22 @@ export function resolveInvocation(raw: RawInvocation): Invocation {
       };
     }
     format = raw.outputFormat as OutputFormat;
+  }
+
+  if (raw.permissionMode !== undefined) {
+    const legacy = LEGACY_PERMISSION_MODES[raw.permissionMode];
+    if (legacy !== undefined) {
+      return {
+        mode: "error",
+        message: `Permission mode "${raw.permissionMode}" was removed — use "${legacy}".`,
+      };
+    }
+    if (!(PERMISSION_MODES as readonly string[]).includes(raw.permissionMode)) {
+      return {
+        mode: "error",
+        message: `Unknown --permission-mode "${raw.permissionMode}". Valid modes: ${PERMISSION_MODES.join(", ")}.`,
+      };
+    }
   }
 
   // Trimmed/blank-checked up front: a genuinely empty piped stdin (e.g.
