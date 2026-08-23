@@ -34,7 +34,7 @@ describe("defaults", () => {
 
     expect(config.provider).toBe("ollama");
     expect(config.ollamaHost).toBe("http://localhost:11434");
-    expect(config.permissionMode).toBe("ask");
+    expect(config.permissionMode).toBe("build");
   });
 });
 
@@ -89,7 +89,7 @@ describe("guardrails", () => {
 
     const config = await loadConfig({ cwd });
 
-    expect(config.permissionMode).toBe("ask");
+    expect(config.permissionMode).toBe("build");
     expect(config.warnings.join(" ")).toContain("reckless");
   });
 
@@ -102,10 +102,31 @@ describe("guardrails", () => {
     expect(config.provider).toBe("ollama");
   });
 
-  test("reads the permission mode from project settings", async () => {
-    await writeProjectSettings({ permissionMode: "accept-edits" });
+  // v0.3 removed ask/accept-edits/auto-bypass; persisted settings using them
+  // must migrate instead of being rejected as unknown.
+  describe("removed-mode migration", () => {
+    test.each([
+      ["ask", "build"],
+      ["accept-edits", "build"],
+      ["auto-bypass", "auto"],
+    ])("permission mode %s migrates to %s with a warning", async (from, to) => {
+      await writeProjectSettings({ permissionMode: from });
 
-    expect((await loadConfig({ cwd })).permissionMode).toBe("accept-edits");
+      const config = await loadConfig({ cwd });
+
+      expect(config.permissionMode).toBe(to);
+      expect(config.warnings.join(" ")).toContain(from);
+      expect(config.warnings.join(" ")).toContain(to);
+    });
+
+    test("an unset permission mode falls back to build with no warning", async () => {
+      const config = await loadConfig({ cwd });
+
+      expect(config.permissionMode).toBe("build");
+      expect(
+        config.warnings.filter((warning) => warning.includes("mode")),
+      ).toEqual([]);
+    });
   });
 
   // Regression: PermissionManager persisted "plan" (added to MODE_CYCLE) before

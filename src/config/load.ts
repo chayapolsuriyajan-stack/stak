@@ -105,17 +105,32 @@ function coerceProvider(value: string | undefined, warnings: string[]): Provider
   return "ollama";
 }
 
+// v0.3 removed ask/accept-edits/auto-bypass; settings persisted under those
+// names migrate forward instead of being rejected as unknown.
+const MODE_MIGRATIONS: Record<string, PermissionMode> = {
+  ask: "build",
+  "accept-edits": "build",
+  "auto-bypass": "auto",
+};
+
 function coerceMode(
   value: string | undefined,
   warnings: string[],
 ): PermissionMode {
-  if (value === undefined) return "ask";
+  if (value === undefined) return "build";
+  const migrated = MODE_MIGRATIONS[value];
+  if (migrated !== undefined) {
+    warnings.push(
+      `Permission mode "${value}" was removed — using "${migrated}". Update .stak/settings.json to "${migrated}".`,
+    );
+    return migrated;
+  }
   // Derived from MODE_CYCLE rather than a hand-written literal union, so a
   // future mode added there can't silently fail to round-trip through
-  // persisted project settings the way "plan" briefly did.
+  // persisted project settings.
   if ((MODE_CYCLE as string[]).includes(value)) return value as PermissionMode;
-  warnings.push(`Unknown permission mode "${value}", falling back to ask.`);
-  return "ask";
+  warnings.push(`Unknown permission mode "${value}", falling back to build.`);
+  return "build";
 }
 
 function coerceThreshold(value: number | undefined, warnings: string[]): number {
