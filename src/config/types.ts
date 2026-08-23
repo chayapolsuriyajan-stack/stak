@@ -7,7 +7,7 @@ import type { ProviderName } from "../providers/types.js";
  * model is expected to describe what it would do instead. Switching to any
  * other mode is how a proposed plan gets approved to actually run.
  */
-export type PermissionMode = "plan" | "ask" | "accept-edits" | "auto-bypass";
+export type PermissionMode = "plan" | "build" | "auto";
 
 /** Shape of ~/.stak/config.json — the only file allowed to hold secrets. */
 export interface GlobalConfig {

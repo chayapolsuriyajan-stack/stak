@@ -10,16 +10,14 @@ import type {
   PermissionRequest,
 } from "./types.js";
 
-// Strictest first: plan can't even be asked into running something, ask
-// prompts for everything risky, accept-edits trusts edits, auto-bypass
-// trusts everything.
-export const MODE_CYCLE: PermissionMode[] = ["plan", "ask", "accept-edits", "auto-bypass"];
+// Strictest first: plan can't even be asked into running something, build
+// trusts edits but still asks for commands, auto trusts everything.
+export const MODE_CYCLE: PermissionMode[] = ["plan", "build", "auto"];
 
 export const MODE_LABELS: Record<PermissionMode, string> = {
-  plan: "plan only — research freely, no edits or commands until approved",
-  ask: "ask before edits and commands",
-  "accept-edits": "auto-accept edits, ask for commands",
-  "auto-bypass": "no prompts",
+  plan: "research freely — no edits or commands until you switch out",
+  build: "edits run automatically, commands ask first",
+  auto: "nothing asks",
 };
 
 export class PermissionManager {
@@ -80,14 +78,12 @@ export class PermissionManager {
     if (tier === "read-only") return false;
 
     switch (this.mode) {
-      case "auto-bypass":
+      case "auto":
         return false;
-      case "accept-edits":
-        // Commands stay gated even here: an edit is reviewable after the fact,
-        // an arbitrary shell command is not.
+      case "build":
+        // Commands stay gated even here: an edit leaves a diff you can read
+        // and revert, an arbitrary shell command does not.
         return tier === "bash";
-      case "ask":
-        return true;
       case "plan":
         // check() short-circuits plan mode before this is ever reached.
         return true;
