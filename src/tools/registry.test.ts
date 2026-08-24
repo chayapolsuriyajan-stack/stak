@@ -1,11 +1,12 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { z } from "zod";
+import type { HookRunner } from "../hooks/runner.js";
 import { PermissionManager } from "../permissions/manager.js";
 import { ToolRegistry } from "./registry.js";
-import type { AnyTool } from "./types.js";
+import type { AnyTool, ToolExecContext } from "./types.js";
 
 let cwd: string;
 
@@ -21,6 +22,104 @@ function registry(mode: "plan" | "build" | "auto", extra?: AnyTool[]) {
   const permissions = new PermissionManager(mode, cwd);
   return { registry: new ToolRegistry({ cwd, permissions, extra }), permissions };
 }
+
+function hookStub(
+  impl: (
+    phase: "beforeTool" | "afterTool",
+  ) => { blocked: boolean; reasons: string[]; notices: string[] },
+): HookRunner {
+  return { run: vi.fn(impl) } as unknown as HookRunner;
+}
+
+function probeTool(calls: string[]): AnyTool {
+  return {
+    name: "probe",
+    description: "records that it executed",
+    schema: z.object({}),
+    riskTier: "edit",
+    async execute(_args: undefined, _ctx: ToolExecContext) {
+      calls.push("tool");
+      return { output: "probed" };
+    },
+  } as unknown as AnyTool;
+}
+
+test("beforeTool veto blocks execution and reports the hook reason", async () => {
+  const hooks = hookStub((phase) =>
+    phase === "beforeTool"
+      ? { blocked: true, reasons: ['blocked by hook "guard": no writes'], notices: [] }
+      : { blocked: false, reasons: [], notices: [] },
+  );
+  const calls: string[] = [];
+  const tools = new ToolRegistry({
+    cwd,
+    permissions: new PermissionManager("auto", cwd),
+    hooks,
+    extra: [probeTool(calls)],
+  });
+
+  const result = await tools.execute({ name: "probe", input: {} });
+
+  expect(result.isError).toBe(true);
+  expect(result.output).toContain("guard");
+  expect(result.output).toContain("no writes");
+  expect(calls).toEqual([]);
+});
+
+test("approved calls run beforeTool, then the tool, then afterTool in order", async () => {
+  const order: string[] = [];
+  const hooks = hookStub((phase) => {
+    order.push(phase);
+    return { blocked: false, reasons: [], notices: [] };
+  });
+  const tools = new ToolRegistry({
+    cwd,
+    permissions: new PermissionManager("auto", cwd),
+    hooks,
+    extra: [probeTool(order)],
+  });
+
+  await tools.execute({ name: "probe", input: {} });
+
+  expect(order).toEqual(["beforeTool", "tool", "afterTool"]);
+});
+
+test("afterTool notices ride along on a successful result", async () => {
+  const hooks = hookStub((phase) =>
+    phase === "afterTool"
+      ? { blocked: false, reasons: [], notices: ['hook "fmt" failed: exploded'] }
+      : { blocked: false, reasons: [], notices: [] },
+  );
+  const tools = new ToolRegistry({
+    cwd,
+    permissions: new PermissionManager("auto", cwd),
+    hooks,
+    extra: [],
+  });
+
+  const result = await tools.execute({ name: "read", input: { path: "whatever.txt" } });
+
+  expect(result.notices).toEqual(['hook "fmt" failed: exploded']);
+});
+
+test("plan-denied calls never invoke hooks", async () => {
+  const hooks = hookStub(() => ({ blocked: false, reasons: [], notices: [] }));
+  const runSpy = hooks.run as ReturnType<typeof vi.fn>;
+  const tools = new ToolRegistry({
+    cwd,
+    permissions: new PermissionManager("plan", cwd),
+    hooks,
+    extra: [],
+  });
+
+  const result = await tools.execute({
+    name: "write",
+    input: { path: "blocked.txt", content: "nope" },
+  });
+
+  expect(result.isError).toBe(true);
+  expect(runSpy).not.toHaveBeenCalled();
+});
 
 test("exposes every built-in tool with a JSON schema", () => {
   const definitions = registry("auto").registry.definitions();

@@ -1,4 +1,5 @@
 import { zodToJsonSchema } from "zod-to-json-schema";
+import type { HookRunner } from "../hooks/runner.js";
 import type { PermissionManager } from "../permissions/manager.js";
 import type { ToolDefinition } from "../providers/types.js";
 import { bashTool } from "./bash.js";
@@ -12,6 +13,9 @@ import { writeTool } from "./write.js";
 export interface ToolRegistryOptions {
   cwd: string;
   permissions: PermissionManager;
+  /** Runs beforeTool/afterTool hook commands around each execution.
+   * Absent when no hooks are configured. */
+  hooks?: HookRunner;
   /** Extra tools beyond the built-ins, such as the Skill meta-tool. */
   extra?: AnyTool[];
 }
@@ -24,10 +28,12 @@ export class ToolRegistry {
   private tools = new Map<string, AnyTool>();
   private readonly cwd: string;
   private readonly permissions: PermissionManager;
+  private readonly hooks?: HookRunner;
 
   constructor(options: ToolRegistryOptions) {
     this.cwd = options.cwd;
     this.permissions = options.permissions;
+    this.hooks = options.hooks;
 
     const builtins = [
       readTool,
@@ -67,12 +73,13 @@ export class ToolRegistry {
       input: unknown;
     },
     signal?: AbortSignal,
-  ): Promise<ToolResult & { isError: boolean }> {
+  ): Promise<ToolResult & { isError: boolean; notices: string[] }> {
     const tool = this.tools.get(call.name);
     if (!tool) {
       return {
         output: `No such tool: ${call.name}. Available: ${[...this.tools.keys()].join(", ")}`,
         isError: true,
+        notices: [],
       };
     }
 
@@ -81,9 +88,12 @@ export class ToolRegistry {
       return {
         output: `Invalid arguments for ${tool.name}: ${formatIssues(parsed.error.issues)}`,
         isError: true,
+        notices: [],
       };
     }
 
+    // Permission first: a denied call never reaches hook commands, so plan
+    // mode (and a declined prompt) can't be probed through them.
     const decision = await this.permissions.check({
       toolName: tool.name,
       riskTier: tool.riskTier,
@@ -91,16 +101,39 @@ export class ToolRegistry {
     });
 
     if (decision === "denied") {
-      return { output: this.permissions.denialReason(tool.name), isError: true };
+      return { output: this.permissions.denialReason(tool.name), isError: true, notices: [] };
+    }
+
+    if (this.hooks) {
+      const before = await this.hooks.run("beforeTool", {
+        tool: tool.name,
+        args: parsed.data,
+        cwd: this.cwd,
+      });
+      if (before.blocked) {
+        return {
+          output: [`Blocked before running ${tool.name}.`, ...before.reasons].join(" "),
+          isError: true,
+          notices: [],
+        };
+      }
     }
 
     try {
       const result = await tool.execute(parsed.data as never, { cwd: this.cwd, signal });
-      return { output: result.output, isError: result.isError ?? false };
+      const after = this.hooks
+        ? await this.hooks.run("afterTool", {
+            tool: tool.name,
+            args: parsed.data,
+            cwd: this.cwd,
+          })
+        : { blocked: false, reasons: [], notices: [] as string[] };
+      return { output: result.output, isError: result.isError ?? false, notices: after.notices };
     } catch (error) {
       return {
         output: error instanceof Error ? error.message : String(error),
         isError: true,
+        notices: [],
       };
     }
   }

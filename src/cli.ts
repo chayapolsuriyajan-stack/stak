@@ -12,6 +12,7 @@ import type { PermissionMode } from "./config/types.js";
 import { runHeadless } from "./headless/run.js";
 import { resolveInvocation } from "./headless/options.js";
 import { readPipedStdin } from "./headless/stdin.js";
+import { HookRunner } from "./hooks/runner.js";
 import { connectMcpServers } from "./mcp/client.js";
 import { appendMemory } from "./memory/append.js";
 import { formatMemory } from "./memory/format.js";
@@ -147,6 +148,7 @@ const permissionMode: PermissionMode =
     ? (invocation.permissionMode as PermissionMode)
     : config.permissionMode;
 const permissions = new PermissionManager(permissionMode, cwd);
+const hooks = new HookRunner(config.hooks);
 const { skills, warnings: skillWarnings } = await loadSkills(cwd);
 const mcp = await connectMcpServers(config.mcpServers);
 const mcpWarnings = mcp.statuses
@@ -155,6 +157,7 @@ const mcpWarnings = mcp.statuses
 const tools = new ToolRegistry({
   cwd,
   permissions,
+  hooks,
   extra: [createSkillTool(skills) as unknown as AnyTool, ...mcp.tools],
 });
 

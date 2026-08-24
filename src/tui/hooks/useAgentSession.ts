@@ -141,15 +141,23 @@ export function useAgentSession(
                 const index = current.findLastIndex(
                   (m) => m.kind === "tool" && m.output === undefined,
                 );
-                if (index === -1) return current;
-                const target = current[index];
-                if (target?.kind !== "tool") return current;
                 const updated = [...current];
-                updated[index] = {
-                  ...target,
-                  output: event.output,
-                  isError: event.isError,
-                };
+                if (index !== -1) {
+                  const target = current[index];
+                  if (target?.kind === "tool") {
+                    updated[index] = {
+                      ...target,
+                      output: event.output,
+                      isError: event.isError,
+                    };
+                  }
+                }
+                // afterTool hook stderr — display-only context the user
+                // should see, but the model must not (it rides outside the
+                // tool_result block on purpose).
+                for (const notice of event.notices ?? []) {
+                  updated.push({ kind: "notice", text: notice });
+                }
                 return updated;
               });
               break;

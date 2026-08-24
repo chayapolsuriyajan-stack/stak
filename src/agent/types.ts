@@ -60,6 +60,8 @@ export type AgentEvent =
       name: string;
       output: string;
       isError: boolean;
+      /** afterTool hook messages — display-only, never model-visible. */
+      notices?: string[];
     }
   | {
       type: "usage";

@@ -100,12 +100,12 @@ export class HookRunner {
     // undefined as an instant fire.
     const timeoutMs = hook.timeout ?? DEFAULT_TIMEOUT_MS;
     return new Promise((resolve) => {
-      // stdout is piped-but-drained so chatty hooks can't deadlock on a full
-      // pipe buffer; stderr is captured to explain vetoes and failures.
+      // Default stdio pipes all three streams: stdout must be drained so
+      // chatty hooks can't deadlock on a full pipe buffer, stderr is captured
+      // to explain vetoes and failures.
       const child = spawn(expandArgTokens(hook.run, payloadArgs(payload)), {
         shell: true,
         cwd,
-        stdio: ["pipe", "ignore", "pipe"],
       });
       let stderr = "";
       let settled = false;
@@ -120,8 +120,8 @@ export class HookRunner {
         });
       }, timeoutMs);
 
-      child.stdout?.on("data", () => {});
-      child.stderr?.on("data", (chunk: Buffer) => {
+      child.stdout.on("data", () => {});
+      child.stderr.on("data", (chunk) => {
         stderr += chunk.toString();
       });
       child.on("error", (error) => {
