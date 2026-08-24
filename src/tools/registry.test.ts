@@ -132,6 +132,7 @@ test("exposes every built-in tool with a JSON schema", () => {
     "grep",
     "read",
     "todo_write",
+    "webfetch",
     "write",
   ]);
   for (const definition of definitions) {

@@ -9,6 +9,7 @@ import { grepTool } from "./grep.js";
 import { readTool } from "./read.js";
 import { todoWriteTool } from "./todo.js";
 import type { AnyTool, ToolResult } from "./types.js";
+import { webfetchTool } from "./webfetch.js";
 import { writeTool } from "./write.js";
 
 export interface ToolRegistryOptions {
@@ -44,6 +45,7 @@ export class ToolRegistry {
       grepTool,
       globTool,
       todoWriteTool,
+      webfetchTool,
     ] as unknown as AnyTool[];
 
     for (const tool of [...builtins, ...(options.extra ?? [])]) {
