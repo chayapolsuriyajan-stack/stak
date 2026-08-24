@@ -244,6 +244,7 @@ export function App({
         },
         listMcpServers: () => mcpServers ?? [],
         listHooks: () => configuredHooks ?? [],
+        getProjectCwd: () => cwd,
         listMemory: async () => (await listMemory?.()) ?? { files: [], warnings: [] },
         compact: async (focus) => {
           const result = await compact(focus);

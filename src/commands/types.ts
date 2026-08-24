@@ -39,6 +39,8 @@ export interface CommandContext {
   listMcpServers: () => McpServerStatus[];
   /** Every configured beforeTool/afterTool hook, global and project. */
   listHooks: () => HookSummary[];
+  /** The project root this session operates on — where .stak/ state lives. */
+  getProjectCwd: () => string;
   /** The project memory files (STAK.md) that were loaded for this session.
    * Async: re-reads from disk on every call so /memory (and anything else
    * that calls it) never reports stale content, e.g. right after /init just

@@ -30,6 +30,7 @@ function context(overrides: Partial<CommandContext> = {}) {
     listModels: vi.fn(async () => undefined),
     listMcpServers: (): McpServerStatus[] => [],
     listHooks: (): HookSummary[] => [],
+    getProjectCwd: () => cwd,
     listMemory: async (): Promise<LoadedMemory> => ({ files: [], warnings: [] }),
     compact: vi.fn(
       async (): Promise<CompactResult> => ({
@@ -225,6 +226,46 @@ describe("builtins", () => {
     if (outcome.kind === "notice") {
       expect(outcome.text).toContain("No hooks configured");
     }
+  });
+
+  test("/todo shows the current checklist", async () => {
+    const { writeTodos } = await import("../tools/todo.js");
+    await writeTodos(cwd, [
+      { content: "wire things", status: "in_progress" },
+      { content: "ship it", status: "pending" },
+    ]);
+    const registry = await CommandRegistry.load(cwd);
+
+    const outcome = await registry.run("/todo", context());
+
+    expect(outcome.kind).toBe("notice");
+    if (outcome.kind === "notice") {
+      expect(outcome.text).toContain("0/2 done");
+      expect(outcome.text).toContain("◐ wire things");
+      expect(outcome.text).toContain("☐ ship it");
+    }
+  });
+
+  test("/todo on an empty list points at todo_write", async () => {
+    const registry = await CommandRegistry.load(cwd);
+
+    const outcome = await registry.run("/todo", context());
+
+    expect(outcome.kind).toBe("notice");
+    if (outcome.kind === "notice") expect(outcome.text).toContain("No todos");
+  });
+
+  test("/clear resets the todo file", async () => {
+    const { writeTodos, readTodos } = await import("../tools/todo.js");
+    await writeTodos(cwd, [{ content: "stale task", status: "pending" }]);
+    const registry = await CommandRegistry.load(cwd);
+    const ctx = context();
+
+    const outcome = await registry.run("/clear", ctx);
+
+    expect(outcome.kind).toBe("handled");
+    expect(ctx.clear).toHaveBeenCalled();
+    expect(await readTodos(cwd)).toEqual([]);
   });
 
   test("/mcp reports when no servers are configured", async () => {    const registry = await CommandRegistry.load(cwd);
