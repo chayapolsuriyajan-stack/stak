@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { nanoid } from "nanoid";
 import type { Message } from "../agent/types.js";
+import { stripImagePayloads } from "../agent/images.js";
 import { sessionsDir } from "../config/paths.js";
 import type { SessionRecord } from "./types.js";
 
@@ -58,7 +59,9 @@ export class SessionStore {
 
         await this.write({
           type: "message",
-          message,
+          // Image payloads are stripped: transcripts keep sourcePath, never
+          // megabytes of base64. rehydrateImages() refills on resume.
+          message: stripImagePayloads(message),
           ts: new Date().toISOString(),
         });
       } catch {

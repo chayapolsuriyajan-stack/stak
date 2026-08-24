@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import type { ImageData } from "../agent/types.js";
 
 /**
  * How dangerous a tool is, which decides whether the permission mode can
@@ -14,6 +15,10 @@ export interface ToolExecContext {
 export interface ToolResult {
   output: string;
   isError?: boolean;
+  /** Images for the model to see alongside the text — e.g. read on an image
+   * or video file. Pixels ride outside `output` so providers that need a
+   * different wire shape can translate them; adapters flatten as required. */
+  images?: ImageData[];
 }
 
 export interface Tool<TArgs = unknown> {
