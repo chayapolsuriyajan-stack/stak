@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { CommandRegistry, isCommand, parse } from "./dispatch.js";
 import { loadMarkdownCommands } from "./loader.js";
-import type { CommandContext } from "./types.js";
+import type { CommandContext, HookSummary } from "./types.js";
 import type { CompactResult } from "../agent/compact.js";
 import type { LoadedMemory } from "../memory/types.js";
 import type { McpServerStatus } from "../mcp/types.js";
@@ -22,13 +22,14 @@ afterEach(async () => {
 function context(overrides: Partial<CommandContext> = {}) {
   return {
     clear: vi.fn(),
-    getPermissionMode: () => "ask",
+    getPermissionMode: () => "build",
     setPermissionMode: vi.fn(async (mode: string) => mode),
     setModel: vi.fn(),
     getModel: () => "test-model",
     describeModel: () => "ollama test-model",
     listModels: vi.fn(async () => undefined),
     listMcpServers: (): McpServerStatus[] => [],
+    listHooks: (): HookSummary[] => [],
     listMemory: async (): Promise<LoadedMemory> => ({ files: [], warnings: [] }),
     compact: vi.fn(
       async (): Promise<CompactResult> => ({
@@ -184,8 +185,49 @@ describe("builtins", () => {
     expect(ctx.setPermissionMode).toHaveBeenCalledWith("auto");
   });
 
-  test("/mcp reports when no servers are configured", async () => {
+  test("/hooks lists entries from both sources", async () => {
     const registry = await CommandRegistry.load(cwd);
+    const ctx = context({
+      listHooks: (): HookSummary[] => [
+        {
+          phase: "beforeTool",
+          name: "guard",
+          match: "bash",
+          run: "node guard.js",
+          source: "project",
+        },
+        {
+          phase: "afterTool",
+          name: "fmt",
+          run: "prettier --write $FILE_PATH",
+          source: "global",
+        },
+      ],
+    });
+
+    const outcome = await registry.run("/hooks", ctx);
+
+    expect(outcome.kind).toBe("notice");
+    if (outcome.kind === "notice") {
+      expect(outcome.text).toContain("guard");
+      expect(outcome.text).toContain("bash");
+      expect(outcome.text).toContain("project");
+      expect(outcome.text).toContain("global");
+      expect(outcome.text).toContain("$FILE_PATH");
+    }
+  });
+
+  test("/hooks says none configured when empty", async () => {
+    const registry = await CommandRegistry.load(cwd);
+    const outcome = await registry.run("/hooks", context());
+
+    expect(outcome.kind).toBe("notice");
+    if (outcome.kind === "notice") {
+      expect(outcome.text).toContain("No hooks configured");
+    }
+  });
+
+  test("/mcp reports when no servers are configured", async () => {    const registry = await CommandRegistry.load(cwd);
     const ctx = context();
 
     const outcome = await registry.run("/mcp", ctx);

@@ -44,6 +44,9 @@ export interface ResolvedConfig {
   ollamaHost: string;
   mcpServers: NamedMcpServer[];
   hooks: PhaseHooks;
+  /** Where each configured hook came from, keyed `${phase}:${name}` —
+   * project wins over global, matching mcpServers precedence. */
+  hookSources: Record<string, "global" | "project">;
   autoCompact: boolean;
   autoCompactThreshold: number;
   /** Non-fatal problems worth surfacing once the UI is up. */

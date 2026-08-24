@@ -6,7 +6,7 @@ import type { ModelInfoCache } from "../agent/modelInfo.js";
 import type { Message } from "../agent/types.js";
 import type { CommandRegistry } from "../commands/dispatch.js";
 import { isCommand } from "../commands/dispatch.js";
-import type { CommandOutcome } from "../commands/types.js";
+import type { CommandOutcome, HookSummary } from "../commands/types.js";
 import type { McpServerStatus } from "../mcp/types.js";
 import type { LoadedMemory } from "../memory/types.js";
 import { MODE_LABELS, type PermissionManager } from "../permissions/manager.js";
@@ -41,6 +41,8 @@ export interface AppProps {
   modelInfoCache?: ModelInfoCache;
   /** Status of configured MCP servers, surfaced by /mcp. */
   mcpServers?: McpServerStatus[];
+  /** Configured beforeTool/afterTool hooks, surfaced by /hooks. */
+  hooks?: HookSummary[];
   /** Whether auto-compaction runs when context usage crosses the threshold.
    * Defaults to true when undefined. */
   autoCompact?: boolean;
@@ -70,6 +72,7 @@ export function App({
   systemPromptFor,
   modelInfoCache,
   mcpServers,
+  hooks: configuredHooks,
   autoCompact,
   autoCompactThreshold,
   onCompacted,
@@ -240,6 +243,7 @@ export function App({
           }
         },
         listMcpServers: () => mcpServers ?? [],
+        listHooks: () => configuredHooks ?? [],
         listMemory: async () => (await listMemory?.()) ?? { files: [], warnings: [] },
         compact: async (focus) => {
           const result = await compact(focus);

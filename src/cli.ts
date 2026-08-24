@@ -7,6 +7,7 @@ import { createModelInfoCache } from "./agent/modelInfo.js";
 import { buildSystemPrompt } from "./agent/systemPrompt.js";
 import type { Message } from "./agent/types.js";
 import { CommandRegistry } from "./commands/dispatch.js";
+import type { HookSummary } from "./commands/types.js";
 import { loadConfig } from "./config/load.js";
 import type { PermissionMode } from "./config/types.js";
 import { runHeadless } from "./headless/run.js";
@@ -149,6 +150,16 @@ const permissionMode: PermissionMode =
     : config.permissionMode;
 const permissions = new PermissionManager(permissionMode, cwd);
 const hooks = new HookRunner(config.hooks);
+const hookSummaries: HookSummary[] = (["beforeTool", "afterTool"] as const).flatMap(
+  (phase) =>
+    config.hooks[phase].map((hook) => ({
+      phase,
+      name: hook.name,
+      ...(hook.match !== undefined ? { match: hook.match } : {}),
+      run: hook.run,
+      source: config.hookSources[`${phase}:${hook.name}`] ?? "global",
+    })),
+);
 const { skills, warnings: skillWarnings } = await loadSkills(cwd);
 const mcp = await connectMcpServers(config.mcpServers);
 const mcpWarnings = mcp.statuses
@@ -313,6 +324,7 @@ if (invocation.mode === "print") {
       systemPromptFor,
       modelInfoCache: createModelInfoCache(),
       mcpServers: mcp.statuses,
+      hooks: hookSummaries,
       onNewSession: () => {
         store = new SessionStore({ provider: provider.name, model: ctx.model, cwd });
       },

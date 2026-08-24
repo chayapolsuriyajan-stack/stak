@@ -131,6 +131,29 @@ export const builtinCommands: Command[] = [
   },
 
   {
+    name: "hooks",
+    description: "show configured beforeTool/afterTool hooks",
+    source: "builtin",
+    run(ctx) {
+      const hooks = ctx.listHooks();
+
+      if (hooks.length === 0) {
+        return {
+          kind: "notice",
+          text: "No hooks configured. Add them under `hooks` in ~/.stak/config.json or .stak/settings.json.",
+        };
+      }
+
+      const lines = hooks.map((hook) => {
+        const match = hook.match ? ` match=${hook.match}` : "";
+        return `  ${hook.phase.padEnd(11)}${hook.name}${match} (${hook.source}): ${hook.run}`;
+      });
+
+      return { kind: "notice", text: ["Hooks:", ...lines].join("\n") };
+    },
+  },
+
+  {
     name: "memory",
     description: "show which project memory files (STAK.md) were loaded",
     source: "builtin",

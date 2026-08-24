@@ -63,6 +63,15 @@ export async function loadConfig(options: LoadOptions = {}): Promise<ResolvedCon
   const projectHooks = parseHooks(project, "project");
   warnings.push(...globalHooks.warnings, ...projectHooks.warnings);
   const hooks = mergeHooks(globalHooks.hooks, projectHooks.hooks);
+  const hookSources: Record<string, "global" | "project"> = {};
+  for (const phase of ["beforeTool", "afterTool"] as const) {
+    for (const hook of globalHooks.hooks[phase]) {
+      hookSources[`${phase}:${hook.name}`] = "global";
+    }
+    for (const hook of projectHooks.hooks[phase]) {
+      hookSources[`${phase}:${hook.name}`] = "project";
+    }
+  }
 
   const envModel = env["STAK_MODEL"];
   const envProvider = env["STAK_PROVIDER"];
@@ -87,6 +96,7 @@ export async function loadConfig(options: LoadOptions = {}): Promise<ResolvedCon
     ollamaHost: env["OLLAMA_HOST"] ?? global?.ollamaHost ?? "http://localhost:11434",
     mcpServers,
     hooks,
+    hookSources,
     autoCompact: project?.autoCompact ?? global?.autoCompact ?? true,
     autoCompactThreshold: coerceThreshold(
       project?.autoCompactThreshold ?? global?.autoCompactThreshold,
