@@ -7,6 +7,7 @@ import { editTool } from "./edit.js";
 import { globTool } from "./glob.js";
 import { grepTool } from "./grep.js";
 import { readTool } from "./read.js";
+import { todoWriteTool } from "./todo.js";
 import type { AnyTool, ToolResult } from "./types.js";
 import { writeTool } from "./write.js";
 
@@ -42,6 +43,7 @@ export class ToolRegistry {
       bashTool,
       grepTool,
       globTool,
+      todoWriteTool,
     ] as unknown as AnyTool[];
 
     for (const tool of [...builtins, ...(options.extra ?? [])]) {

@@ -125,7 +125,15 @@ test("exposes every built-in tool with a JSON schema", () => {
   const definitions = registry("auto").registry.definitions();
   const names = definitions.map((d) => d.name).sort();
 
-  expect(names).toEqual(["bash", "edit", "glob", "grep", "read", "write"]);
+  expect(names).toEqual([
+    "bash",
+    "edit",
+    "glob",
+    "grep",
+    "read",
+    "todo_write",
+    "write",
+  ]);
   for (const definition of definitions) {
     expect(definition.jsonSchema).toHaveProperty("type", "object");
     expect(definition.description).not.toBe("");

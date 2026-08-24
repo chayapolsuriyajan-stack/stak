@@ -24,6 +24,12 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
     `OS: ${os.release()}`,
   ];
 
+  sections.push(
+    "",
+    "# Todo list",
+    "For any task needing several steps, maintain a plan with the todo_write tool: send the complete list each time, keep exactly one item in_progress, and mark items completed as soon as they finish. Revisit the list after each completed step instead of dropping it mid-task.",
+  );
+
   if (options.skills && options.skills.length > 0) {
     sections.push(
       "",
