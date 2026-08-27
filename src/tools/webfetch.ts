@@ -1,9 +1,14 @@
+import dns from "node:dns/promises";
+import net from "node:net";
 import { z } from "zod";
 import type { Tool } from "./types.js";
 
 const DEFAULT_MAX_CHARS = 20_000;
 const MAX_DOWNLOAD_BYTES = 5 * 1024 * 1024;
 const TIMEOUT_MS = 30_000;
+/** Redirects are followed by hand so every hop is re-validated; a public URL
+ * that 302s to 169.254.169.254 must not slip past the first check. */
+const MAX_REDIRECTS = 5;
 
 const schema = z.object({
   url: z
@@ -78,6 +83,89 @@ function stripTags(html: string): string {
   return html.replace(/<[^>]*>/g, "");
 }
 
+/**
+ * SECURITY: true when an IP belongs to a range that is only reachable from
+ * inside the host or its network — loopback, RFC1918 private space, CGNAT,
+ * link-local (which includes 169.254.169.254, the cloud instance-metadata
+ * endpoint that hands out credentials), and their IPv6 equivalents.
+ *
+ * webfetch takes a model-chosen URL and is auto-approved as a read-only
+ * tool, so without this check a prompt-injected model could read the host's
+ * own metadata service, or port-scan an internal network, with no prompt.
+ */
+export function isBlockedAddress(ip: string): boolean {
+  const version = net.isIP(ip);
+
+  if (version === 4) {
+    const octets = ip.split(".").map(Number);
+    const [a = 0, b = 0] = octets;
+    if (a === 0) return true; // 0.0.0.0/8 "this host"
+    if (a === 10) return true; // private
+    if (a === 127) return true; // loopback
+    if (a === 169 && b === 254) return true; // link-local + cloud metadata
+    if (a === 172 && b >= 16 && b <= 31) return true; // private
+    if (a === 192 && b === 168) return true; // private
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT
+    if (a >= 224) return true; // multicast + reserved
+    return false;
+  }
+
+  if (version === 6) {
+    const normalized = ip.toLowerCase().replace(/^\[|\]$/g, "");
+    if (normalized === "::" || normalized === "::1") return true; // unspecified/loopback
+    if (normalized.startsWith("fe80")) return true; // link-local
+    if (/^f[cd]/.test(normalized)) return true; // unique local (fc00::/7)
+    if (normalized.startsWith("ff")) return true; // multicast
+    // ::ffff:127.0.0.1 and friends — an IPv4 address wearing an IPv6 hat.
+    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(normalized);
+    if (mapped?.[1]) return isBlockedAddress(mapped[1]);
+    return false;
+  }
+
+  return false;
+}
+
+/**
+ * Resolves a hostname and rejects it if ANY address it maps to is internal.
+ * Checking every result (rather than just the first) closes the case where a
+ * hostname deliberately returns both a public and a private address.
+ */
+async function assertPublicHost(hostname: string): Promise<string | undefined> {
+  // Opt-in escape hatch for the legitimate case this otherwise blocks:
+  // pointing the model at your own dev server on localhost. Off by default
+  // because turning it on re-opens the metadata-endpoint and internal-network
+  // reach that the checks below exist to close.
+  if (process.env["STAK_WEBFETCH_ALLOW_PRIVATE"] === "1") return undefined;
+
+  const bare = hostname.replace(/^\[|\]$/g, "");
+
+  if (net.isIP(bare) !== 0) {
+    return isBlockedAddress(bare)
+      ? `${bare} is a private or loopback address; webfetch only reaches public hosts.`
+      : undefined;
+  }
+
+  if (bare.toLowerCase() === "localhost" || bare.toLowerCase().endsWith(".localhost")) {
+    return `"${hostname}" resolves to the local machine; webfetch only reaches public hosts.`;
+  }
+
+  let resolved: { address: string }[];
+  try {
+    resolved = await dns.lookup(bare, { all: true });
+  } catch (error) {
+    return `Could not resolve "${hostname}": ${
+      error instanceof Error ? error.message : String(error)
+    }`;
+  }
+
+  for (const { address } of resolved) {
+    if (isBlockedAddress(address)) {
+      return `"${hostname}" resolves to ${address}, a private or loopback address; webfetch only reaches public hosts.`;
+    }
+  }
+  return undefined;
+}
+
 export const webfetchTool: Tool<z.infer<typeof schema>> = {
   name: "webfetch",
   description:
@@ -102,12 +190,39 @@ export const webfetchTool: Tool<z.infer<typeof schema>> = {
 
     const maxChars = args.maxChars ?? DEFAULT_MAX_CHARS;
 
+    // Redirects are followed manually so each hop is validated: "follow"
+    // would let a public URL bounce to an internal one behind our back.
     let response: Response;
+    let currentUrl = parsedUrl;
     try {
-      response = await fetch(parsedUrl.toString(), {
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-        redirect: "follow",
-      });
+      for (let hop = 0; ; hop++) {
+        const blocked = await assertPublicHost(currentUrl.hostname);
+        if (blocked) return { output: blocked, isError: true };
+
+        response = await fetch(currentUrl.toString(), {
+          signal: AbortSignal.timeout(TIMEOUT_MS),
+          redirect: "manual",
+        });
+
+        const location = response.headers.get("location");
+        if (response.status < 300 || response.status >= 400 || location === null) break;
+
+        if (hop >= MAX_REDIRECTS) {
+          return {
+            output: `Too many redirects (more than ${MAX_REDIRECTS}) starting from ${args.url}.`,
+            isError: true,
+          };
+        }
+
+        const next = new URL(location, currentUrl);
+        if (next.protocol !== "http:" && next.protocol !== "https:") {
+          return {
+            output: `Refusing to follow a redirect to a non-http(s) URL: ${next.toString()}`,
+            isError: true,
+          };
+        }
+        currentUrl = next;
+      }
     } catch (error) {
       return {
         output: `Failed to fetch ${args.url}: ${

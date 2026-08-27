@@ -1,12 +1,17 @@
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { htmlToText, webfetchTool } from "./webfetch.js";
+import { htmlToText, isBlockedAddress, webfetchTool } from "./webfetch.js";
 
 let server: http.Server;
 let baseUrl: string;
 
 beforeAll(async () => {
+  // These tests serve from 127.0.0.1, which the SSRF guard blocks by
+  // default. This opt-in is exactly the escape hatch a developer would use
+  // to point the model at a local dev server. The guard itself is covered in
+  // the "SSRF protection" block below, with the flag explicitly unset.
+  process.env["STAK_WEBFETCH_ALLOW_PRIVATE"] = "1";
   server = http.createServer((req, res) => {
     const url = req.url ?? "/";
     if (url === "/html") {
@@ -49,6 +54,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  delete process.env["STAK_WEBFETCH_ALLOW_PRIVATE"];
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
@@ -131,5 +137,85 @@ describe("webfetchTool", () => {
 
   test("is usable in plan mode (read-only tier)", async () => {
     expect(webfetchTool.riskTier).toBe("read-only");
+  });
+});
+
+describe("SSRF protection", () => {
+  // webfetch takes a model-chosen URL and is auto-approved as a read-only
+  // tool, so without these checks a prompt-injected model could read the
+  // host's own cloud metadata endpoint or probe an internal network with no
+  // prompt at any point.
+  describe("isBlockedAddress", () => {
+    test("blocks loopback, private, CGNAT, and link-local IPv4", () => {
+      for (const ip of [
+        "127.0.0.1",
+        "10.0.0.5",
+        "172.16.0.1",
+        "172.31.255.255",
+        "192.168.1.1",
+        "169.254.169.254", // cloud instance metadata
+        "100.64.0.1", // CGNAT
+        "0.0.0.0",
+      ]) {
+        expect(isBlockedAddress(ip), ip).toBe(true);
+      }
+    });
+
+    test("blocks loopback, link-local, and unique-local IPv6", () => {
+      for (const ip of ["::1", "::", "fe80::1", "fc00::1", "fd12:3456::1"]) {
+        expect(isBlockedAddress(ip), ip).toBe(true);
+      }
+    });
+
+    test("blocks IPv4-mapped IPv6 loopback, which would otherwise sneak through", () => {
+      expect(isBlockedAddress("::ffff:127.0.0.1")).toBe(true);
+      expect(isBlockedAddress("::ffff:169.254.169.254")).toBe(true);
+    });
+
+    test("allows ordinary public addresses", () => {
+      for (const ip of ["8.8.8.8", "1.1.1.1", "93.184.216.34", "2606:4700::1111"]) {
+        expect(isBlockedAddress(ip), ip).toBe(false);
+      }
+      // Adjacent to private space but genuinely public.
+      expect(isBlockedAddress("172.32.0.1")).toBe(false);
+      expect(isBlockedAddress("11.0.0.1")).toBe(false);
+    });
+  });
+
+  describe("execute", () => {
+    // The opt-in from the top-level beforeAll must be off for these.
+    beforeAll(() => {
+      delete process.env["STAK_WEBFETCH_ALLOW_PRIVATE"];
+    });
+    afterAll(() => {
+      process.env["STAK_WEBFETCH_ALLOW_PRIVATE"] = "1";
+    });
+
+    test("refuses a literal loopback URL", async () => {
+      const result = await webfetchTool.execute({ url: "http://127.0.0.1/secret" }, ctx);
+      expect(result.isError).toBe(true);
+      expect(result.output).toMatch(/private or loopback/i);
+    });
+
+    test("refuses the cloud metadata endpoint", async () => {
+      const result = await webfetchTool.execute(
+        { url: "http://169.254.169.254/latest/meta-data/" },
+        ctx,
+      );
+      expect(result.isError).toBe(true);
+      expect(result.output).toMatch(/private or loopback/i);
+    });
+
+    test("refuses localhost by name, not just by address", async () => {
+      const result = await webfetchTool.execute({ url: "http://localhost:8080/" }, ctx);
+      expect(result.isError).toBe(true);
+      expect(result.output).toMatch(/local machine|private or loopback/i);
+    });
+
+    test("still refuses non-http(s) schemes", async () => {
+      const result = await webfetchTool.execute({ url: "file:///etc/passwd" }, ctx);
+      expect(result.isError).toBe(true);
+      expect(result.output).toMatch(/http and https/i);
+    });
   });
 });

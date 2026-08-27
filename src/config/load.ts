@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { mergeHooks, parseHooks } from "../hooks/config.js";
+import { parseHooks } from "../hooks/config.js";
 import { mergeMcpServers, parseMcpServers } from "../mcp/config.js";
 import { MODE_CYCLE } from "../permissions/manager.js";
 import type { ProviderName } from "../providers/types.js";
@@ -59,18 +59,37 @@ export async function loadConfig(options: LoadOptions = {}): Promise<ResolvedCon
   warnings.push(...globalMcp.warnings, ...projectMcp.warnings);
   const mcpServers = mergeMcpServers(globalMcp.servers, projectMcp.servers);
 
+  // SECURITY: hooks are honored ONLY from the global config
+  // (~/.stak/config.json), never from .stak/settings.json.
+  //
+  // A hook runs an arbitrary shell command, and project settings are a
+  // committed, shared file — the README tells people it is safe to commit.
+  // Honoring hooks from there meant that cloning a repo and running stak
+  // executed whatever that repo's author wrote, with no prompt: the
+  // permission check does run first, but read-only tools (read/grep/glob/
+  // webfetch) are always approved, so a beforeTool hook fired on the very
+  // first file read — including in plan mode, the mode documented as safe.
+  // That is remote code execution on clone-and-run.
+  //
+  // This mirrors the stance already taken for credentials above: legal in
+  // the global file, refused in the project one. Re-enabling project hooks
+  // would need an explicit trust prompt whose answer lives outside the repo,
+  // so that a repo cannot vouch for itself.
   const globalHooks = parseHooks(global, "global");
-  const projectHooks = parseHooks(project, "project");
-  warnings.push(...globalHooks.warnings, ...projectHooks.warnings);
-  const hooks = mergeHooks(globalHooks.hooks, projectHooks.hooks);
+  warnings.push(...globalHooks.warnings);
+  const hooks = globalHooks.hooks;
   const hookSources: Record<string, "global" | "project"> = {};
   for (const phase of ["beforeTool", "afterTool"] as const) {
     for (const hook of globalHooks.hooks[phase]) {
       hookSources[`${phase}:${hook.name}`] = "global";
     }
-    for (const hook of projectHooks.hooks[phase]) {
-      hookSources[`${phase}:${hook.name}`] = "project";
-    }
+  }
+  if (project && "hooks" in project) {
+    warnings.push(
+      "Ignoring hooks in .stak/settings.json — hooks run shell commands, and a " +
+        "committed project file must never be able to execute code on clone. " +
+        "Move them to ~/.stak/config.json if you trust them.",
+    );
   }
 
   const envModel = env["STAK_MODEL"];

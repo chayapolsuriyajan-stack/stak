@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { mergeHooks, parseHooks } from "./config.js";
+import { parseHooks } from "./config.js";
 
 describe("parseHooks", () => {
   test("returns empty hooks and no warnings for missing config", () => {
@@ -69,27 +69,7 @@ describe("parseHooks", () => {
   });
 });
 
-describe("mergeHooks", () => {
-  test("concatenates phases with globals first", () => {
-    const merged = mergeHooks(
-      { beforeTool: [{ name: "g", run: "g.js" }], afterTool: [] },
-      { beforeTool: [{ name: "p", run: "p.js" }], afterTool: [] },
-    );
-    expect(merged.beforeTool.map((h) => h.name)).toEqual(["g", "p"]);
-  });
-
-  test("a project entry replaces a global of the same name in place-order", () => {
-    const merged = mergeHooks(
-      {
-        beforeTool: [
-          { name: "a", run: "global-a.js" },
-          { name: "b", run: "b.js" },
-        ],
-        afterTool: [],
-      },
-      { beforeTool: [{ name: "a", run: "project-a.js" }], afterTool: [] },
-    );
-    expect(merged.beforeTool.map((h) => h.name)).toEqual(["b", "a"]);
-    expect(merged.beforeTool[1]?.run).toBe("project-a.js");
-  });
-});
+// mergeHooks is gone along with project-sourced hooks — see the SECURITY
+// note in config/load.ts. Its replacement behavior (project hooks refused
+// with a warning) is covered in config/load.test.ts, where the refusal
+// actually happens.

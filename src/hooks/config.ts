@@ -86,19 +86,8 @@ export function parseHooks(source: object | undefined, label: string): ParsedHoo
   return { hooks, warnings };
 }
 
-export function mergeHooks(global: PhaseHooks, project: PhaseHooks): PhaseHooks {
-  return {
-    beforeTool: mergePhase(global.beforeTool, project.beforeTool),
-    afterTool: mergePhase(global.afterTool, project.afterTool),
-  };
-}
-
-function mergePhase(global: HookEntry[], project: HookEntry[]): HookEntry[] {
-  // A project hook of the same name supersedes the global one entirely, and
-  // project overrides run after any remaining globals.
-  const overridden = new Set(project.map((entry) => entry.name));
-  return [
-    ...global.filter((entry) => !overridden.has(entry.name)),
-    ...project,
-  ];
-}
+// mergeHooks/mergePhase used to fold project-sourced hooks over global ones.
+// Both are gone: config/load.ts no longer reads hooks from a project's
+// .stak/settings.json at all, because a committed file that can run shell
+// commands is remote code execution on clone-and-run. There is nothing left
+// to merge — see the SECURITY note in config/load.ts.

