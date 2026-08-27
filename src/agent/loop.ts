@@ -1,6 +1,6 @@
 import type { Provider, StopReason } from "../providers/types.js";
 import { TurnStats } from "./turnStats.js";
-import type { AgentEvent, ContentBlock, Message } from "./types.js";
+import type { AgentEvent, ContentBlock, ImageData, Message } from "./types.js";
 import { userText } from "./types.js";
 
 /** Guards against a model that keeps calling tools without ever concluding. */
@@ -20,6 +20,12 @@ export interface AgentContext {
     isError: boolean;
     /** afterTool hook messages — display-only, never replayed to providers. */
     notices?: string[];
+    /** Images the tool produced (e.g. read on an image or video file), which
+     * the loop turns into sibling image blocks on the tool-result message.
+     * Mirrors ToolResult.images in ../tools/types.ts — kept in sync by hand
+     * because this inline shape is the loop's own contract with whatever
+     * supplies executeTool, not an import of the registry's type. */
+    images?: ImageData[];
   }>;
   /** Tool schemas passed to the provider. Empty until milestone 3. */
   tools?: { name: string; description: string; jsonSchema: Record<string, unknown> }[];

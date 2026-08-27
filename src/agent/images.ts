@@ -20,17 +20,27 @@ export function isVideoFile(filePath: string): boolean {
 /** Magic-byte sniffing — the extension is a claim, these bytes are evidence.
  * A `.png` that is really an HTML error page must not reach the model. */
 export function sniffImageMediaType(buf: Buffer): ImageMediaType | undefined {
-  if (buf.length < 12) return undefined;
-  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+  // Each signature enforces its own length. A blanket 12-byte floor used to
+  // guard all four, but only WEBP actually needs 12 (RIFF????WEBP) — JPEG is
+  // identifiable from 3 bytes and PNG/GIF from 4, so the shared floor
+  // silently rejected valid short headers as "not an image".
+  if (
+    buf.length >= 4 &&
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47
+  ) {
     return "image/png";
   }
-  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
     return "image/jpeg";
   }
-  if (buf.subarray(0, 4).toString("ascii") === "GIF8") {
+  if (buf.length >= 4 && buf.subarray(0, 4).toString("ascii") === "GIF8") {
     return "image/gif";
   }
   if (
+    buf.length >= 12 &&
     buf.subarray(0, 4).toString("ascii") === "RIFF" &&
     buf.subarray(8, 12).toString("ascii") === "WEBP"
   ) {
