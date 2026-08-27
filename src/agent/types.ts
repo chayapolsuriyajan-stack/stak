@@ -82,6 +82,8 @@ export type AgentEvent =
       isError: boolean;
       /** afterTool hook messages — display-only, never model-visible. */
       notices?: string[];
+      /** Images the tool returned — metadata only, no base64 payloads. */
+      images?: { mediaType: ImageMediaType; sourcePath: string }[];
     }
   | {
       type: "usage";

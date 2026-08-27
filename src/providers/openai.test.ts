@@ -36,3 +36,40 @@ describe("toOpenAIMessages", () => {
     expect(messages[0]).toMatchObject({ role: "system" });
   });
 });
+
+describe("toOpenAIMessages images", () => {
+  test("user image blocks become image_url parts with data URIs", () => {
+    const history: Message[] = [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "what is this?" },
+          { type: "image", mediaType: "image/png", data: "AAAA", sourcePath: "/p/a.png" },
+        ],
+      },
+    ];
+
+    const messages = toOpenAIMessages("sys", history);
+
+    expect(messages[1]).toEqual({
+      role: "user",
+      content: [
+        { type: "text", text: "what is this?" },
+        { type: "image_url", image_url: { url: "data:image/png;base64,AAAA" } },
+      ],
+    });
+  });
+
+  test("empty payloads (stripped for persistence) are not sent", () => {
+    const history: Message[] = [
+      {
+        role: "user",
+        content: [
+          { type: "image", mediaType: "image/png", data: "", sourcePath: "/p/gone.png" },
+        ],
+      },
+    ];
+
+    expect(toOpenAIMessages("sys", history)).toHaveLength(1); // system only
+  });
+});

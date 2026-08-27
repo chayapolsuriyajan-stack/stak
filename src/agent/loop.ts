@@ -225,6 +225,14 @@ export async function* runTurn(
         output: result.output,
         isError: result.isError,
         ...(result.notices?.length ? { notices: result.notices } : {}),
+        ...(result.images?.length
+          ? {
+              images: result.images.map((image) => ({
+                mediaType: image.mediaType,
+                sourcePath: image.sourcePath,
+              })),
+            }
+          : {}),
       };
 
       resultBlocks.push({
@@ -233,6 +241,12 @@ export async function* runTurn(
         content: result.output,
         isError: result.isError,
       });
+      // Images ride as sibling blocks in the same user message — Anthropic
+      // accepts them there directly, and the OpenAI/Ollama adapters forward
+      // them from this position into their own wire shapes.
+      for (const image of result.images ?? []) {
+        resultBlocks.push({ type: "image", ...image });
+      }
     }
 
     append(ctx, { role: "user", content: resultBlocks });

@@ -158,6 +158,13 @@ export function useAgentSession(
                 for (const notice of event.notices ?? []) {
                   updated.push({ kind: "notice", text: notice });
                 }
+                // Image metadata only — pixels never reach the transcript.
+                for (const image of event.images ?? []) {
+                  updated.push({
+                    kind: "notice",
+                    text: `[image ${image.sourcePath}]`,
+                  });
+                }
                 return updated;
               });
               break;

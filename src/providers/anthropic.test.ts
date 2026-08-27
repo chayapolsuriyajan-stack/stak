@@ -35,3 +35,34 @@ describe("toAnthropicContent", () => {
     expect(toAnthropicContent([{ type: "thinking", text: "just thoughts" }])).toEqual([]);
   });
 });
+
+describe("toAnthropicContent images", () => {
+  test("maps image blocks to native base64 sources", () => {
+    const content = toAnthropicContent([
+      {
+        type: "image",
+        mediaType: "image/png",
+        data: "AAAA",
+        sourcePath: "/p/shot.png",
+      },
+    ]);
+
+    expect(content).toEqual([
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } },
+    ]);
+  });
+
+  test("keeps images as siblings after their tool_result, in order", () => {
+    const blocks: Message["content"] = [
+      { type: "tool_result", toolUseId: "t1", content: "[image /p/shot.png]" },
+      { type: "image", mediaType: "image/png", data: "BBBB", sourcePath: "/p/shot.png" },
+    ];
+
+    const mapped = toAnthropicContent(blocks);
+
+    expect(mapped).toEqual([
+      { type: "tool_result", tool_use_id: "t1", content: "[image /p/shot.png]", is_error: false },
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "BBBB" } },
+    ]);
+  });
+});
