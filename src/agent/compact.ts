@@ -181,6 +181,10 @@ function lengthOf(block: ContentBlock): number {
       return JSON.stringify(block.input ?? "").length + block.name.length;
     case "thinking":
       return block.text.length;
+    // Base64 length would wildly overstate the model's *token* cost —
+    // providers re-encode pixels, not text — so count a fixed placeholder.
+    case "image":
+      return 512;
   }
 }
 

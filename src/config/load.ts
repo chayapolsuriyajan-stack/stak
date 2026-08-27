@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { mergeHooks, parseHooks } from "../hooks/config.js";
 import { mergeMcpServers, parseMcpServers } from "../mcp/config.js";
 import { MODE_CYCLE } from "../permissions/manager.js";
 import type { ProviderName } from "../providers/types.js";
@@ -58,6 +59,20 @@ export async function loadConfig(options: LoadOptions = {}): Promise<ResolvedCon
   warnings.push(...globalMcp.warnings, ...projectMcp.warnings);
   const mcpServers = mergeMcpServers(globalMcp.servers, projectMcp.servers);
 
+  const globalHooks = parseHooks(global, "global");
+  const projectHooks = parseHooks(project, "project");
+  warnings.push(...globalHooks.warnings, ...projectHooks.warnings);
+  const hooks = mergeHooks(globalHooks.hooks, projectHooks.hooks);
+  const hookSources: Record<string, "global" | "project"> = {};
+  for (const phase of ["beforeTool", "afterTool"] as const) {
+    for (const hook of globalHooks.hooks[phase]) {
+      hookSources[`${phase}:${hook.name}`] = "global";
+    }
+    for (const hook of projectHooks.hooks[phase]) {
+      hookSources[`${phase}:${hook.name}`] = "project";
+    }
+  }
+
   const envModel = env["STAK_MODEL"];
   const envProvider = env["STAK_PROVIDER"];
 
@@ -80,6 +95,8 @@ export async function loadConfig(options: LoadOptions = {}): Promise<ResolvedCon
     openaiApiKey: env["OPENAI_API_KEY"] ?? global?.openaiApiKey,
     ollamaHost: env["OLLAMA_HOST"] ?? global?.ollamaHost ?? "http://localhost:11434",
     mcpServers,
+    hooks,
+    hookSources,
     autoCompact: project?.autoCompact ?? global?.autoCompact ?? true,
     autoCompactThreshold: coerceThreshold(
       project?.autoCompactThreshold ?? global?.autoCompactThreshold,
@@ -105,17 +122,32 @@ function coerceProvider(value: string | undefined, warnings: string[]): Provider
   return "ollama";
 }
 
+// v0.3 removed ask/accept-edits/auto-bypass; settings persisted under those
+// names migrate forward instead of being rejected as unknown.
+const MODE_MIGRATIONS: Record<string, PermissionMode> = {
+  ask: "build",
+  "accept-edits": "build",
+  "auto-bypass": "auto",
+};
+
 function coerceMode(
   value: string | undefined,
   warnings: string[],
 ): PermissionMode {
-  if (value === undefined) return "ask";
+  if (value === undefined) return "build";
+  const migrated = MODE_MIGRATIONS[value];
+  if (migrated !== undefined) {
+    warnings.push(
+      `Permission mode "${value}" was removed — using "${migrated}". Update .stak/settings.json to "${migrated}".`,
+    );
+    return migrated;
+  }
   // Derived from MODE_CYCLE rather than a hand-written literal union, so a
   // future mode added there can't silently fail to round-trip through
-  // persisted project settings the way "plan" briefly did.
+  // persisted project settings.
   if ((MODE_CYCLE as string[]).includes(value)) return value as PermissionMode;
-  warnings.push(`Unknown permission mode "${value}", falling back to ask.`);
-  return "ask";
+  warnings.push(`Unknown permission mode "${value}", falling back to build.`);
+  return "build";
 }
 
 function coerceThreshold(value: number | undefined, warnings: string[]): number {

@@ -1,6 +1,8 @@
+import fs from "node:fs/promises";
 import { describeCompaction } from "../agent/compact.js";
 import { describeMemory } from "../memory/format.js";
 import { MODE_CYCLE, MODE_LABELS } from "../permissions/manager.js";
+import { formatTodos, readTodos, todoFilePath } from "../tools/todo.js";
 import type { Command } from "./types.js";
 
 export const builtinCommands: Command[] = [
@@ -26,9 +28,32 @@ export const builtinCommands: Command[] = [
     name: "clear",
     description: "clear the transcript and start a fresh session",
     source: "builtin",
-    run(ctx) {
+    async run(ctx) {
       ctx.clear();
+      // The todo list is session-scoped bookkeeping; starting fresh means
+      // emptying it too. A missing file is the normal first-run case.
+      try {
+        await fs.rm(todoFilePath(ctx.getProjectCwd()));
+      } catch {
+        // ENOENT and friends — nothing to reset.
+      }
       return { kind: "handled" };
+    },
+  },
+
+  {
+    name: "todo",
+    description: "show the current todo list",
+    source: "builtin",
+    async run(ctx) {
+      const todos = await readTodos(ctx.getProjectCwd());
+      if (todos.length === 0) {
+        return {
+          kind: "notice",
+          text: "No todos. The model maintains one with todo_write when working on multi-step tasks.",
+        };
+      }
+      return { kind: "notice", text: formatTodos(todos) };
     },
   },
 
@@ -127,6 +152,29 @@ export const builtinCommands: Command[] = [
         kind: "notice",
         text: ["MCP servers:", ...lines].join("\n"),
       };
+    },
+  },
+
+  {
+    name: "hooks",
+    description: "show configured beforeTool/afterTool hooks",
+    source: "builtin",
+    run(ctx) {
+      const hooks = ctx.listHooks();
+
+      if (hooks.length === 0) {
+        return {
+          kind: "notice",
+          text: "No hooks configured. Add them under `hooks` in ~/.stak/config.json or .stak/settings.json.",
+        };
+      }
+
+      const lines = hooks.map((hook) => {
+        const match = hook.match ? ` match=${hook.match}` : "";
+        return `  ${hook.phase.padEnd(11)}${hook.name}${match} (${hook.source}): ${hook.run}`;
+      });
+
+      return { kind: "notice", text: ["Hooks:", ...lines].join("\n") };
     },
   },
 

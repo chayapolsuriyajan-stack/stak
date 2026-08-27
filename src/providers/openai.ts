@@ -21,6 +21,7 @@ export function toOpenAIMessages(systemPrompt: string, history: Message[]): Chat
 
   for (const message of history) {
     const textParts: string[] = [];
+    const imageBlocks = [];
     const toolCalls: OpenAI.Chat.Completions.ChatCompletionMessageToolCall[] = [];
 
     for (const block of message.content) {
@@ -45,6 +46,11 @@ export function toOpenAIMessages(systemPrompt: string, history: Message[]): Chat
             content: block.content,
           });
           break;
+        case "image":
+          // OpenAI's tool-role messages can't carry images, so siblings of
+          // tool_results ride the next user message this loop emits.
+          if (block.data !== "") imageBlocks.push(block);
+          break;
         case "thinking":
           // Dropped, deliberately: must never be replayed back as if it
           // were prior assistant speech. (This is a void switch so an
@@ -62,8 +68,21 @@ export function toOpenAIMessages(systemPrompt: string, history: Message[]): Chat
         content: text === "" ? null : text,
         ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
       });
-    } else if (message.role === "user" && text !== "") {
-      messages.push({ role: "user", content: text });
+    } else if (message.role === "user" && (text !== "" || imageBlocks.length > 0)) {
+      if (imageBlocks.length === 0) {
+        messages.push({ role: "user", content: text });
+      } else {
+        messages.push({
+          role: "user",
+          content: [
+            ...(text !== "" ? ([{ type: "text" as const, text }]) : []),
+            ...imageBlocks.map((image) => ({
+              type: "image_url" as const,
+              image_url: { url: `data:${image.mediaType};base64,${image.data}` },
+            })),
+          ],
+        });
+      }
     }
   }
 

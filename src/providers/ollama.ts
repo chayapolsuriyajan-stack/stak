@@ -16,6 +16,8 @@ interface OllamaMessage {
   content: string;
   tool_calls?: { function: { name: string; arguments: Record<string, unknown> } }[];
   tool_name?: string;
+  /** Base64 image payloads (no data: prefix) for vision-capable models. */
+  images?: string[];
 }
 
 /**
@@ -29,6 +31,10 @@ function toOllamaMessages(history: Message[]): OllamaMessage[] {
   for (const message of history) {
     const textParts: string[] = [];
     const toolCalls: NonNullable<OllamaMessage["tool_calls"]> = [];
+    // Ollama takes base64 strings on the message itself. A user message can
+    // carry several tool results plus their images; attach all of them to
+    // the first emitted message from this internal one.
+    const images: string[] = [];
 
     for (const block of message.content) {
       switch (block.type) {
@@ -42,6 +48,9 @@ function toOllamaMessages(history: Message[]): OllamaMessage[] {
               arguments: (block.input ?? {}) as Record<string, unknown>,
             },
           });
+          break;
+        case "image":
+          if (block.data !== "") images.push(block.data);
           break;
         case "tool_result":
         case "thinking":
@@ -61,11 +70,16 @@ function toOllamaMessages(history: Message[]): OllamaMessage[] {
         role: message.role,
         content: textParts.join("\n"),
         ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+        ...(images.length > 0 ? { images } : {}),
       });
     }
 
-    for (const result of toolResults) {
-      messages.push({ role: "tool", content: result.content });
+    for (const [index, result] of toolResults.entries()) {
+      messages.push({
+        role: "tool",
+        content: result.content,
+        ...(index === 0 && images.length > 0 ? { images } : {}),
+      });
     }
   }
 
@@ -144,7 +158,25 @@ export class OllamaProvider implements Provider {
     const tagSplitter = createThinkTagSplitter();
 
     try {
-      const supportsThinking = (await this.capabilities(req.model)).includes("thinking");
+      const capabilities = await this.capabilities(req.model);
+      const supportsThinking = capabilities.includes("thinking");
+
+      // Pre-flight vision check: when the server reports capabilities at all
+      // and vision isn't among them, an image-bearing request can only fail —
+      // say so plainly instead of surfacing a raw server error. Unknown
+      // capability (empty report, unreachable server) still attempts the call.
+      const historyHasImages = req.history.some((message) =>
+        message.content.some((block) => block.type === "image" && block.data !== ""),
+      );
+      if (historyHasImages && capabilities.length > 0 && !capabilities.includes("vision")) {
+        yield {
+          type: "error",
+          error: new Error(
+            `Model "${req.model}" does not support images (capabilities: ${capabilities.join(", ")}). Switch to a vision-capable model with /model to read images.`,
+          ),
+        };
+        return;
+      }
 
       const messages: OllamaMessage[] = [
         { role: "system", content: req.systemPrompt },

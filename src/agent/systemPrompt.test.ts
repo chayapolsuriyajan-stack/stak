@@ -22,11 +22,11 @@ describe("buildSystemPrompt", () => {
 
   test("omits the plan-mode section by default", () => {
     expect(buildSystemPrompt({ cwd: "/p" })).not.toContain("Plan mode");
-    expect(buildSystemPrompt({ cwd: "/p", planMode: false })).not.toContain("Plan mode");
+    expect(buildSystemPrompt({ cwd: "/p", permissionMode: undefined })).not.toContain("Plan mode");
   });
 
   test("adds explicit plan-mode instructions when active", () => {
-    const prompt = buildSystemPrompt({ cwd: "/p", planMode: true });
+    const prompt = buildSystemPrompt({ cwd: "/p", permissionMode: "plan" });
 
     expect(prompt).toContain("Plan mode is active");
     // The model should be told which tools are gone, not left to discover it
@@ -36,9 +36,26 @@ describe("buildSystemPrompt", () => {
   });
 
   test("tells the model not to nag the user to switch modes itself", () => {
-    const prompt = buildSystemPrompt({ cwd: "/p", planMode: true });
+    const prompt = buildSystemPrompt({ cwd: "/p", permissionMode: "plan" });
 
     expect(prompt.toLowerCase()).toContain("do not");
+  });
+
+  test("build mode describes its gating", () => {
+    const prompt = buildSystemPrompt({ cwd: "/p", permissionMode: "build" });
+    expect(prompt).toContain("# Permissions");
+    expect(prompt).toContain("run automatically");
+    expect(prompt).toContain("approval");
+  });
+
+  test("auto mode says nothing asks", () => {
+    const prompt = buildSystemPrompt({ cwd: "/p", permissionMode: "auto" });
+    expect(prompt).toContain("# Permissions");
+    expect(prompt.toLowerCase()).toContain("without approval");
+  });
+
+  test("omits the permissions section without a mode", () => {
+    expect(buildSystemPrompt({ cwd: "/p" })).not.toContain("# Permissions");
   });
 
   test("omits the memory section when memory is not provided", () => {
@@ -59,7 +76,7 @@ describe("buildSystemPrompt", () => {
     const prompt = buildSystemPrompt({
       cwd: "/p",
       skills: [{ name: "reviewer", description: "review code for bugs" }],
-      planMode: true,
+      permissionMode: "plan",
       memory: "The user prefers tabs over spaces.",
     });
 

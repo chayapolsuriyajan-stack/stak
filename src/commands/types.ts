@@ -2,6 +2,15 @@ import type { CompactResult } from "../agent/compact.js";
 import type { LoadedMemory } from "../memory/types.js";
 import type { McpServerStatus } from "../mcp/types.js";
 
+/** One configured hook, as /hooks surfaces it. */
+export interface HookSummary {
+  phase: "beforeTool" | "afterTool";
+  name: string;
+  match?: string;
+  run: string;
+  source: "global" | "project";
+}
+
 /** What running a command asks the app to do. */
 export type CommandOutcome =
   /** Nothing further; the command already did its work through its effects. */
@@ -28,6 +37,10 @@ export interface CommandContext {
   listCommands: () => { name: string; description: string }[];
   /** Status of every configured MCP server, global and project. */
   listMcpServers: () => McpServerStatus[];
+  /** Every configured beforeTool/afterTool hook, global and project. */
+  listHooks: () => HookSummary[];
+  /** The project root this session operates on — where .stak/ state lives. */
+  getProjectCwd: () => string;
   /** The project memory files (STAK.md) that were loaded for this session.
    * Async: re-reads from disk on every call so /memory (and anything else
    * that calls it) never reports stale content, e.g. right after /init just

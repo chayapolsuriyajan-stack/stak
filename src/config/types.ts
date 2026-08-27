@@ -1,3 +1,4 @@
+import type { PhaseHooks, HooksConfig } from "../hooks/config.js";
 import type { McpServerConfig, NamedMcpServer } from "../mcp/types.js";
 import type { ProviderName } from "../providers/types.js";
 
@@ -7,7 +8,7 @@ import type { ProviderName } from "../providers/types.js";
  * model is expected to describe what it would do instead. Switching to any
  * other mode is how a proposed plan gets approved to actually run.
  */
-export type PermissionMode = "plan" | "ask" | "accept-edits" | "auto-bypass";
+export type PermissionMode = "plan" | "build" | "auto";
 
 /** Shape of ~/.stak/config.json — the only file allowed to hold secrets. */
 export interface GlobalConfig {
@@ -17,6 +18,7 @@ export interface GlobalConfig {
   openaiApiKey?: string;
   ollamaHost?: string;
   mcpServers?: Record<string, McpServerConfig>;
+  hooks?: HooksConfig;
   autoCompact?: boolean;
   autoCompactThreshold?: number;
 }
@@ -27,6 +29,7 @@ export interface ProjectSettings {
   defaultModel?: string;
   permissionMode?: PermissionMode;
   mcpServers?: Record<string, McpServerConfig>;
+  hooks?: HooksConfig;
   autoCompact?: boolean;
   autoCompactThreshold?: number;
 }
@@ -40,6 +43,10 @@ export interface ResolvedConfig {
   openaiApiKey?: string;
   ollamaHost: string;
   mcpServers: NamedMcpServer[];
+  hooks: PhaseHooks;
+  /** Where each configured hook came from, keyed `${phase}:${name}` —
+   * project wins over global, matching mcpServers precedence. */
+  hookSources: Record<string, "global" | "project">;
   autoCompact: boolean;
   autoCompactThreshold: number;
   /** Non-fatal problems worth surfacing once the UI is up. */

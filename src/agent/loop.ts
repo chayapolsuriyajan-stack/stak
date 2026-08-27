@@ -15,7 +15,12 @@ export interface AgentContext {
   executeTool?: (
     call: { id: string; name: string; input: unknown },
     signal?: AbortSignal,
-  ) => Promise<{ output: string; isError: boolean }>;
+  ) => Promise<{
+    output: string;
+    isError: boolean;
+    /** afterTool hook messages — display-only, never replayed to providers. */
+    notices?: string[];
+  }>;
   /** Tool schemas passed to the provider. Empty until milestone 3. */
   tools?: { name: string; description: string; jsonSchema: Record<string, unknown> }[];
   /** Called for every message appended to history, for session persistence. */
@@ -210,6 +215,7 @@ export async function* runTurn(
         : {
             output: `Tool "${call.name}" is not available.`,
             isError: true,
+            notices: [] as string[],
           };
 
       yield {
@@ -218,6 +224,15 @@ export async function* runTurn(
         name: call.name,
         output: result.output,
         isError: result.isError,
+        ...(result.notices?.length ? { notices: result.notices } : {}),
+        ...(result.images?.length
+          ? {
+              images: result.images.map((image) => ({
+                mediaType: image.mediaType,
+                sourcePath: image.sourcePath,
+              })),
+            }
+          : {}),
       };
 
       resultBlocks.push({
@@ -226,6 +241,12 @@ export async function* runTurn(
         content: result.output,
         isError: result.isError,
       });
+      // Images ride as sibling blocks in the same user message — Anthropic
+      // accepts them there directly, and the OpenAI/Ollama adapters forward
+      // them from this position into their own wire shapes.
+      for (const image of result.images ?? []) {
+        resultBlocks.push({ type: "image", ...image });
+      }
     }
 
     append(ctx, { role: "user", content: resultBlocks });

@@ -41,6 +41,17 @@ export function toAnthropicContent(blocks: ContentBlock[]): Anthropic.ContentBlo
             is_error: block.isError ?? false,
           },
         ];
+      case "image":
+        return [
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: block.mediaType,
+              data: block.data,
+            },
+          },
+        ];
       case "thinking":
         return [];
     }

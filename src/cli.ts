@@ -7,11 +7,13 @@ import { createModelInfoCache } from "./agent/modelInfo.js";
 import { buildSystemPrompt } from "./agent/systemPrompt.js";
 import type { Message } from "./agent/types.js";
 import { CommandRegistry } from "./commands/dispatch.js";
+import type { HookSummary } from "./commands/types.js";
 import { loadConfig } from "./config/load.js";
 import type { PermissionMode } from "./config/types.js";
 import { runHeadless } from "./headless/run.js";
 import { resolveInvocation } from "./headless/options.js";
 import { readPipedStdin } from "./headless/stdin.js";
+import { HookRunner } from "./hooks/runner.js";
 import { connectMcpServers } from "./mcp/client.js";
 import { appendMemory } from "./memory/append.js";
 import { formatMemory } from "./memory/format.js";
@@ -147,6 +149,17 @@ const permissionMode: PermissionMode =
     ? (invocation.permissionMode as PermissionMode)
     : config.permissionMode;
 const permissions = new PermissionManager(permissionMode, cwd);
+const hooks = new HookRunner(config.hooks);
+const hookSummaries: HookSummary[] = (["beforeTool", "afterTool"] as const).flatMap(
+  (phase) =>
+    config.hooks[phase].map((hook) => ({
+      phase,
+      name: hook.name,
+      ...(hook.match !== undefined ? { match: hook.match } : {}),
+      run: hook.run,
+      source: config.hookSources[`${phase}:${hook.name}`] ?? "global",
+    })),
+);
 const { skills, warnings: skillWarnings } = await loadSkills(cwd);
 const mcp = await connectMcpServers(config.mcpServers);
 const mcpWarnings = mcp.statuses
@@ -155,6 +168,7 @@ const mcpWarnings = mcp.statuses
 const tools = new ToolRegistry({
   cwd,
   permissions,
+  hooks,
   extra: [createSkillTool(skills) as unknown as AnyTool, ...mcp.tools],
 });
 
@@ -187,17 +201,22 @@ let store = resumed
   ? SessionStore.resuming(sessionMeta, resumed)
   : new SessionStore(sessionMeta);
 
-// Rebuilt whenever plan mode is entered or left, so the model's instructions
+// Rebuilt whenever the permission mode changes, so the model's instructions
 // stay in sync with what the tools will actually let it do.
-const systemPromptFor = (planMode: boolean) =>
-  buildSystemPrompt({ cwd, skills, planMode, memory: formatMemory(memory.files) });
+const systemPromptFor = (mode: PermissionMode) =>
+  buildSystemPrompt({
+    cwd,
+    skills,
+    permissionMode: mode,
+    memory: formatMemory(memory.files),
+  });
 
 const ctx: AgentContext = {
   provider,
   model,
   // The catalog goes in the prompt so the model knows a skill exists before it
   // has any reason to call the tool.
-  systemPrompt: systemPromptFor(permissions.getMode() === "plan"),
+  systemPrompt: systemPromptFor(permissions.getMode()),
   history,
   tools: tools.definitions(),
   executeTool: (call, signal) => tools.execute(call, signal),
@@ -305,6 +324,7 @@ if (invocation.mode === "print") {
       systemPromptFor,
       modelInfoCache: createModelInfoCache(),
       mcpServers: mcp.statuses,
+      hooks: hookSummaries,
       onNewSession: () => {
         store = new SessionStore({ provider: provider.name, model: ctx.model, cwd });
       },

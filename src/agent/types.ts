@@ -35,7 +35,27 @@ export interface ThinkingBlock {
   text: string;
 }
 
-export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock | ThinkingBlock;
+export type ImageMediaType = "image/png" | "image/jpeg" | "image/gif" | "image/webp";
+
+/** Pixel payload plus where it came from. `data` is base64 and is stripped
+ * before persistence (see stripImagePayloads) — transcripts keep the path,
+ * never megabytes of pixels. */
+export interface ImageData {
+  mediaType: ImageMediaType;
+  data: string;
+  sourcePath: string;
+}
+
+export interface ImageBlock extends ImageData {
+  type: "image";
+}
+
+export type ContentBlock =
+  | TextBlock
+  | ToolUseBlock
+  | ToolResultBlock
+  | ThinkingBlock
+  | ImageBlock;
 
 export type Role = "user" | "assistant";
 
@@ -60,6 +80,10 @@ export type AgentEvent =
       name: string;
       output: string;
       isError: boolean;
+      /** afterTool hook messages — display-only, never model-visible. */
+      notices?: string[];
+      /** Images the tool returned — metadata only, no base64 payloads. */
+      images?: { mediaType: ImageMediaType; sourcePath: string }[];
     }
   | {
       type: "usage";

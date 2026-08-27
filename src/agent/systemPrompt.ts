@@ -1,12 +1,13 @@
 import os from "node:os";
+import type { PermissionMode } from "../config/types.js";
 
 export interface SystemPromptOptions {
   cwd: string;
   /** Skill catalog entries, injected so the model knows what it can invoke. */
   skills?: { name: string; description: string }[];
-  /** True while write/edit/bash are all refused — steers the model toward
-   * research and a written plan instead of retrying blocked actions. */
-  planMode?: boolean;
+  /** Current permission mode — plan steers research behavior; build/auto get
+   * one honest line about their gating so the model predicts prompts. */
+  permissionMode?: PermissionMode;
   /** Freeform memory content, injected as its own section when non-blank. */
   memory?: string;
 }
@@ -23,6 +24,12 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
     `OS: ${os.release()}`,
   ];
 
+  sections.push(
+    "",
+    "# Todo list",
+    "For any task needing several steps, maintain a plan with the todo_write tool: send the complete list each time, keep exactly one item in_progress, and mark items completed as soon as they finish. Revisit the list after each completed step instead of dropping it mid-task.",
+  );
+
   if (options.skills && options.skills.length > 0) {
     sections.push(
       "",
@@ -36,13 +43,25 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
     sections.push("", "# Memory", options.memory.trim());
   }
 
-  if (options.planMode) {
+  if (options.permissionMode === "plan") {
     sections.push(
       "",
       "# Plan mode is active",
       "The write, edit, and bash tools are disabled — calling them will fail. Use read, grep, glob, and Skill freely to research the task.",
       "Once you understand what's needed, present a clear, concrete plan for what you would do and stop. Do not attempt the change yet.",
       "The user reviews the plan and switches out of plan mode themselves when they want you to proceed — do not tell them to do this, and do not retry blocked tools waiting for that to happen.",
+    );
+  } else if (options.permissionMode === "build") {
+    sections.push(
+      "",
+      "# Permissions",
+      "File edits run automatically without approval. Shell commands require the user's approval, so batch meaningful work between them instead of asking for each trivial step.",
+    );
+  } else if (options.permissionMode === "auto") {
+    sections.push(
+      "",
+      "# Permissions",
+      "All tools run without approval prompts.",
     );
   }
 

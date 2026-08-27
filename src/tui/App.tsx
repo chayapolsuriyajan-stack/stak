@@ -6,7 +6,7 @@ import type { ModelInfoCache } from "../agent/modelInfo.js";
 import type { Message } from "../agent/types.js";
 import type { CommandRegistry } from "../commands/dispatch.js";
 import { isCommand } from "../commands/dispatch.js";
-import type { CommandOutcome } from "../commands/types.js";
+import type { CommandOutcome, HookSummary } from "../commands/types.js";
 import type { McpServerStatus } from "../mcp/types.js";
 import type { LoadedMemory } from "../memory/types.js";
 import { MODE_LABELS, type PermissionManager } from "../permissions/manager.js";
@@ -35,12 +35,14 @@ export interface AppProps {
   /** Rebuilds the system prompt for a given plan-mode state, so entering or
    * leaving plan mode keeps the model's instructions in sync with what the
    * tools will actually let it do. */
-  systemPromptFor?: (planMode: boolean) => string;
+  systemPromptFor?: (mode: PermissionMode) => string;
   /** Shared across the process so a repeated /model switch back to a
    * previously-seen model doesn't re-query the provider. */
   modelInfoCache?: ModelInfoCache;
   /** Status of configured MCP servers, surfaced by /mcp. */
   mcpServers?: McpServerStatus[];
+  /** Configured beforeTool/afterTool hooks, surfaced by /hooks. */
+  hooks?: HookSummary[];
   /** Whether auto-compaction runs when context usage crosses the threshold.
    * Defaults to true when undefined. */
   autoCompact?: boolean;
@@ -70,6 +72,7 @@ export function App({
   systemPromptFor,
   modelInfoCache,
   mcpServers,
+  hooks: configuredHooks,
   autoCompact,
   autoCompactThreshold,
   onCompacted,
@@ -110,7 +113,7 @@ export function App({
 
   const applyMode = (next: PermissionMode) => {
     setMode(next);
-    ctx.systemPrompt = systemPromptFor?.(next === "plan") ?? ctx.systemPrompt;
+    ctx.systemPrompt = systemPromptFor?.(next) ?? ctx.systemPrompt;
   };
 
   const autoCompactingRef = useRef(false);
@@ -240,6 +243,8 @@ export function App({
           }
         },
         listMcpServers: () => mcpServers ?? [],
+        listHooks: () => configuredHooks ?? [],
+        getProjectCwd: () => cwd,
         listMemory: async () => (await listMemory?.()) ?? { files: [], warnings: [] },
         compact: async (focus) => {
           const result = await compact(focus);
@@ -294,7 +299,7 @@ export function App({
       void onAppendMemory(memoryText)
         .then((result) => {
           append({ kind: "notice", text: `Added to STAK.md: ${result.line}` });
-          ctx.systemPrompt = systemPromptFor?.(mode === "plan") ?? ctx.systemPrompt;
+          ctx.systemPrompt = systemPromptFor?.(mode) ?? ctx.systemPrompt;
         })
         .catch((error) => {
           append({
