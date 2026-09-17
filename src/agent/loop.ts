@@ -6,6 +6,11 @@ import { userText } from "./types.js";
 /** Guards against a model that keeps calling tools without ever concluding. */
 const MAX_ITERATIONS = 50;
 
+/** Stands in for a tool call the user interrupted before it could run, so the
+ * assistant's tool_use block still has the matching tool_result every
+ * provider requires. */
+const INTERRUPTED_BEFORE_RUN = "Interrupted by the user before this tool ran.";
+
 export interface AgentContext {
   provider: Provider;
   model: string;
@@ -203,8 +208,25 @@ export async function* runTurn(
     // the append above guarantees.
     const resultBlocks: ContentBlock[] = [];
 
-    for (const call of toolCalls) {
-      if (signal?.aborted) return yield* endTurn(interrupted());
+    for (const [index, call] of toolCalls.entries()) {
+      if (signal?.aborted) {
+        // Every tool_use block in the assistant message appended above needs
+        // a matching tool_result — including the calls that never ran.
+        // Returning here without them leaves the saved session holding an
+        // unanswered tool_use, which Anthropic and OpenAI both reject with a
+        // 400 on the next --continue. Ollama tolerates it, which is why an
+        // interrupted turn only breaks resume on the hosted providers.
+        for (const skipped of toolCalls.slice(index)) {
+          resultBlocks.push({
+            type: "tool_result",
+            toolUseId: skipped.id,
+            content: INTERRUPTED_BEFORE_RUN,
+            isError: true,
+          });
+        }
+        append(ctx, { role: "user", content: resultBlocks });
+        return yield* endTurn(interrupted());
+      }
 
       stats.setPhase({ tool: call.name });
       yield* progress();

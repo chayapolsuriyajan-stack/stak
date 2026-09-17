@@ -584,6 +584,46 @@ describe("interruption", () => {
 
     expect(withoutProgress(events).map((e) => e.type)).toEqual(["usage", "interrupted"]);
   });
+
+  // Regression: interrupting a round that called several tools used to return
+  // before any tool_result was recorded, leaving the saved session with an
+  // assistant tool_use that nothing answers. Anthropic and OpenAI reject that
+  // history with a 400 on the next --continue; Ollama tolerates it, so the
+  // breakage only ever showed up on the hosted providers.
+  test("interrupting mid-batch still answers every tool_use, so the session stays resumable", async () => {
+    const controller = new AbortController();
+    const ctx = context(
+      scriptedProvider([
+        [
+          { type: "tool-call-done", id: "t1", name: "read", args: { path: "a.ts" } },
+          { type: "tool-call-done", id: "t2", name: "read", args: { path: "b.ts" } },
+          { type: "message-done", stopReason: "tool_use" },
+        ],
+      ]),
+      {
+        // Abort while the first tool runs, so the second never starts.
+        executeTool: async () => {
+          controller.abort();
+          return { output: "first result", isError: false };
+        },
+      },
+    );
+
+    const events = await collect(runTurn(ctx, "hi", { signal: controller.signal }));
+    expect(withoutProgress(events).at(-1)).toMatchObject({ type: "interrupted" });
+
+    const toolUseIds = ctx.history
+      .flatMap((m) => m.content)
+      .filter((b) => b.type === "tool_use")
+      .map((b) => b.id);
+    const answeredIds = ctx.history
+      .flatMap((m) => m.content)
+      .filter((b) => b.type === "tool_result")
+      .map((b) => b.toolUseId);
+
+    expect(toolUseIds).toEqual(["t1", "t2"]);
+    expect([...answeredIds].sort()).toEqual(["t1", "t2"]);
+  });
 });
 
 test("notifies the caller of each message for persistence", async () => {

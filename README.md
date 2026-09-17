@@ -61,6 +61,12 @@ Inside a session:
 | `/clear` | clear the transcript and start a new session |
 | `/model [name]` | list known models with the current one marked, or switch to a new one |
 | `/permissions [mode]` | show or set the permission mode |
+| `/compact [focus]` | summarize the conversation so far to free up context |
+| `/memory` | show which `STAK.md` files were loaded |
+| `/init` | ask the model to survey the project and write a `STAK.md` |
+| `/todo` | show the model's current task list |
+| `/mcp` | show configured MCP servers and their connection status |
+| `/hooks` | show configured hooks |
 | `/exit` | quit |
 | `shift+tab` | cycle the permission mode |
 | `esc` | interrupt a turn in progress, or quit when idle |
@@ -307,6 +313,58 @@ project's `.stak/settings.json` is ignored with a warning — that file is
 committed and shared, and a committed file that can execute shell commands
 means cloning a repo and running stak runs its author's code. Move hooks you
 trust into your global config.
+
+## Fetching web pages
+
+The `webfetch` tool takes an exact `http(s)` URL and returns the page as
+readable text — HTML is reduced to text with links kept as
+`[label](href)`, and any other `text/*` resource comes back as-is. It cannot
+search; it needs a URL the model already has. Downloads stop at 5 MB and the
+output is capped (20,000 characters by default, `maxChars` to change it).
+
+It is a read-only tool, so it never prompts — including in `plan` mode, where
+looking things up is the whole point. Two limits worth knowing: it refuses
+private and loopback addresses (see [Security](#security)), and because the
+model chooses the URL, treat it as an outbound channel rather than a
+read-only one.
+
+## Task lists
+
+For multi-step work the model keeps a short task list through the
+`todo_write` tool, stored in `.stak/todo.json` — outside your project files,
+and it survives the session. Run `/todo` to see it:
+
+```
+1/3 done
+  ☑ read the failing test
+  ◐ fix the boundary check
+  ☐ run the suite
+```
+
+You never have to ask for it; the model maintains it on its own, keeping one
+item in progress at a time. `/clear` resets it along with the conversation.
+
+## Images and video
+
+`read` handles more than text. Point it at a `png`, `jpg`, `webp`, or `gif`
+and the image goes to the model as an image rather than as bytes. Point it at
+an `mp4`, `webm`, `mov`, or `mkv` and stak samples evenly spaced frames with
+**ffmpeg** (8 by default, `maxFrames` to change it) and sends those.
+
+Two requirements:
+
+- **A vision-capable model.** Most local models are not. Check with
+  `ollama show <model>` and look for `vision` under Capabilities — if it
+  isn't listed, stak says so plainly instead of failing with a raw server
+  error. Qwen3.8, for instance, reports `tools, thinking, completion` and no
+  `vision`, so images will not work with it.
+- **ffmpeg on your PATH**, for video only. Images need nothing extra.
+
+The file's magic bytes are checked rather than its extension, so a `.png`
+that is really an HTML error page never reaches the model. Image pixels are
+stripped out of the saved session and reloaded from disk on `--resume`, so
+transcripts stay small; a file that has since moved shows as a missing-image
+marker.
 
 ## Commands and skills
 
