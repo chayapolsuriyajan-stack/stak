@@ -35,7 +35,7 @@ stak -P anthropic          # override the provider (-P/--provider)
 stak --cwd ~/code/project  # operate on a specific directory instead of the current one
 stak -p "prompt"           # run one turn non-interactively and exit (-p/--print, headless mode)
 stak -p "prompt" --output-format json   # output format for --print: text (default), json, or stream-json
-stak -p "prompt" --permission-mode auto   # permission mode for --print (default: same as config; one of plan, build, auto)
+stak -p "prompt" --permission-mode auto   # permission mode for --print (default: same as config; one of plan, build, auto, bypass)
 ```
 
 `stak` operates on the current directory by default. To point it at a fixed
@@ -133,9 +133,10 @@ It only applies with `--print`; passing it without `--print` is a hard error,
 the same as `--output-format` without `--print`. Headless mode has no
 interactive prompter, so by default (the project's configured permission
 mode, unless overridden here) every gated tool call is automatically denied;
-pass `--permission-mode build` or `--permission-mode auto` to let it actually
-act. This override is one-shot: it is never written to
-`.stak/settings.json`.
+pass `--permission-mode build`, `--permission-mode auto`, or (skipping hooks
+too) `--permission-mode bypass` to let it actually act. This override is
+one-shot: it is never written to `.stak/settings.json`, unlike setting a mode
+interactively via `/permissions`.
 
 ## Configuration
 
@@ -202,7 +203,8 @@ Every command and file change passes a permission gate before it runs.
 | --- | --- |
 | `plan` | read-only tools work freely; every edit and command is refused outright, no prompt |
 | `build` | edits run automatically, commands ask first (default) |
-| `auto` | nothing prompts |
+| `auto` | nothing prompts, but your configured hooks still run |
+| `bypass` | nothing prompts, and hooks don't run either — no interception at all |
 
 Commands stay gated in `build` because an edit leaves a diff you can read and
 revert, and an arbitrary shell command does not.
@@ -214,6 +216,17 @@ blocked tools or nag you to switch modes. Cycling to any other mode (`shift+tab`
 or `/permissions build`) is how you approve the plan; send a follow-up message
 like "go ahead" and it executes normally from there.
 
+**`bypass` is deliberately not in the `shift+tab` cycle** — pressing it
+repeatedly only ever walks `plan → build → auto → plan`, so this mode is
+never one accidental keypress away. Reach it only by typing `/permissions
+bypass` or passing `--permission-mode bypass`. It differs from `auto` in one
+important way: `auto` still runs your configured [hooks](#hooks), so a
+`beforeTool` check you rely on as a safety net (blocking force pushes, say)
+keeps firing; `bypass` skips hooks entirely, so that check will not run.
+Setting it via `/permissions bypass` persists to `.stak/settings.json` the
+same way every other mode does, so it applies to future launches of the
+project too until you switch away from it.
+
 ## Security
 
 **The `bash` tool is not sandboxed.** A command stak is allowed to run can do
@@ -223,7 +236,9 @@ or denylist of commands; pattern-matching shell input to decide what's "safe"
 is easy to get wrong and easy to bypass, so stak doesn't pretend to do it.
 Treat an approved `bash` call exactly as if you had typed it yourself, and
 lean on the permission modes above — `build` (the default) or `plan` — rather
-than assuming the tool itself limits what a command can reach.
+than assuming the tool itself limits what a command can reach. `bypass` mode
+removes even that: no prompts and no hooks, so only reach for it when you
+would run the same commands yourself without a second thought.
 
 The file tools (`read`, `write`, `edit`, `glob`, `grep`) are different: they
 are confined to the project directory stak was started in. A path that
@@ -256,7 +271,8 @@ headless invocation, and it never modifies the persisted project settings in
 command, and project settings are meant to be committed and shared; honoring
 hooks from there would mean cloning a repo and running stak executed whatever
 its author wrote, with no prompt. A `hooks` block found in project settings is
-ignored with a warning.
+ignored with a warning. Whichever hooks you do configure globally are skipped
+entirely in `bypass` mode — see [Permission modes](#permission-modes).
 
 **`webfetch` cannot reach private networks.** Because it takes a
 model-chosen URL and is auto-approved as a read-only tool, it refuses any
@@ -297,7 +313,9 @@ A **`beforeTool`** hook that exits non-zero **blocks the call** — its stderr
 becomes the reason the model is told. An **`afterTool`** hook that fails
 can't undo anything, so its stderr surfaces in the transcript as a notice
 instead. Hooks run only after the permission gate has already approved a
-call, so a hook can tighten what's allowed but never widen it.
+call, so a hook can tighten what's allowed but never widen it — except in
+[`bypass` mode](#permission-modes), where hooks are skipped entirely and
+don't run at all.
 
 Each hook gets the invocation two ways: as JSON on stdin (`{tool, args, cwd,
 phase}`), and as environment variables — `STAK_TOOL_NAME`, `STAK_TOOL_ARGS`

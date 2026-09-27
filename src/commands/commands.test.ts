@@ -186,6 +186,30 @@ describe("builtins", () => {
     expect(ctx.setPermissionMode).toHaveBeenCalledWith("auto");
   });
 
+  // "bypass" isn't reachable via shift+tab (see MODE_CYCLE), but typing it
+  // explicitly through /permissions must still work -- and be listed, so
+  // it's discoverable rather than hidden.
+  test("/permissions applies bypass, even though it's outside the shift+tab cycle", async () => {
+    const registry = await CommandRegistry.load(cwd);
+    const ctx = context();
+
+    const outcome = await registry.run("/permissions bypass", ctx);
+
+    expect(outcome.kind).toBe("notice");
+    expect(ctx.setPermissionMode).toHaveBeenCalledWith("bypass");
+  });
+
+  test("/permissions with no args lists bypass alongside the cycle modes", async () => {
+    const registry = await CommandRegistry.load(cwd);
+    const ctx = context();
+
+    const outcome = await registry.run("/permissions", ctx);
+
+    expect(outcome.kind).toBe("notice");
+    if (outcome.kind !== "notice") return;
+    expect(outcome.text).toContain("bypass");
+  });
+
   test("/hooks lists entries from both sources", async () => {
     const registry = await CommandRegistry.load(cwd);
     const ctx = context({

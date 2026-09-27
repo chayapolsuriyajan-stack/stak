@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { RiskTier } from "../tools/types.js";
-import { MODE_CYCLE, PermissionManager } from "./manager.js";
+import { ALL_MODES, MODE_CYCLE, PermissionManager } from "./manager.js";
 
 function tmpDir(): string {
   return mkdtempSync(path.join(os.tmpdir(), "stak-perms-"));
@@ -70,6 +70,26 @@ describe("PermissionManager modes", () => {
     expect(prompter).not.toHaveBeenCalled();
   });
 
+  test("bypass approves everything without prompting, same as auto", async () => {
+    const manager = new PermissionManager("bypass", cwd);
+    const prompter = vi.fn();
+    manager.setPrompter(prompter);
+    expect(await manager.check(request("edit", "edit"))).toBe("approved");
+    expect(await manager.check(request("bash", "bash"))).toBe("approved");
+    expect(prompter).not.toHaveBeenCalled();
+  });
+
+  test("bypassesHooks is true only in bypass mode", () => {
+    for (const mode of MODE_CYCLE) {
+      expect(new PermissionManager(mode, cwd).bypassesHooks()).toBe(false);
+    }
+    expect(new PermissionManager("bypass", cwd).bypassesHooks()).toBe(true);
+  });
+
+  test("ALL_MODES is MODE_CYCLE plus bypass, appended", () => {
+    expect(ALL_MODES).toEqual([...MODE_CYCLE, "bypass"]);
+  });
+
   test("prompter denial wins over mode approval", async () => {
     const manager = new PermissionManager("build", cwd);
     manager.setPrompter(async () => "denied");
@@ -81,6 +101,13 @@ describe("PermissionManager modes", () => {
     expect(await manager.cycleMode()).toBe("build");
     expect(await manager.cycleMode()).toBe("auto");
     expect(await manager.cycleMode()).toBe("plan");
+  });
+
+  test("cycleMode never lands on bypass, no matter how many times it's cycled", async () => {
+    const manager = new PermissionManager("plan", cwd);
+    for (let i = 0; i < 10; i++) {
+      expect(await manager.cycleMode()).not.toBe("bypass");
+    }
   });
 
   test("denialReason explains plan mode deferral", () => {

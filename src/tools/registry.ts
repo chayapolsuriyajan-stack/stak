@@ -108,8 +108,13 @@ export class ToolRegistry {
       return { output: this.permissions.denialReason(tool.name), isError: true, notices: [] };
     }
 
-    if (this.hooks) {
-      const before = await this.hooks.run("beforeTool", {
+    // "bypass" mode skips hooks entirely, not just the permission prompt —
+    // it is meant as a true no-interception mode, so a hook relied on as a
+    // safety net (e.g. blocking force pushes) is expected not to fire.
+    const hooks = this.permissions.bypassesHooks() ? undefined : this.hooks;
+
+    if (hooks) {
+      const before = await hooks.run("beforeTool", {
         tool: tool.name,
         args: parsed.data,
         cwd: this.cwd,
@@ -125,8 +130,8 @@ export class ToolRegistry {
 
     try {
       const result = await tool.execute(parsed.data as never, { cwd: this.cwd, signal });
-      const after = this.hooks
-        ? await this.hooks.run("afterTool", {
+      const after = hooks
+        ? await hooks.run("afterTool", {
             tool: tool.name,
             args: parsed.data,
             cwd: this.cwd,

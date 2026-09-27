@@ -10,11 +10,11 @@
  * process or faking stdin.
  */
 
+import { ALL_MODES } from "../permissions/manager.js";
+
 export type OutputFormat = "text" | "json" | "stream-json";
 
 export const OUTPUT_FORMATS: readonly OutputFormat[] = ["text", "json", "stream-json"];
-
-export const PERMISSION_MODES = ["plan", "build", "auto"] as const;
 
 /** Removed v0.2 mode names → what to tell the user to use instead. */
 const LEGACY_PERMISSION_MODES: Record<string, string> = {
@@ -93,10 +93,10 @@ export function resolveInvocation(raw: RawInvocation): Invocation {
         message: `Permission mode "${raw.permissionMode}" was removed — use "${legacy}".`,
       };
     }
-    if (!(PERMISSION_MODES as readonly string[]).includes(raw.permissionMode)) {
+    if (!(ALL_MODES as string[]).includes(raw.permissionMode)) {
       return {
         mode: "error",
-        message: `Unknown --permission-mode "${raw.permissionMode}". Valid modes: ${PERMISSION_MODES.join(", ")}.`,
+        message: `Unknown --permission-mode "${raw.permissionMode}". Valid modes: ${ALL_MODES.join(", ")}.`,
       };
     }
   }

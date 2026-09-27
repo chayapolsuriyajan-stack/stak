@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { describeCompaction } from "../agent/compact.js";
 import { describeMemory } from "../memory/format.js";
-import { MODE_CYCLE, MODE_LABELS } from "../permissions/manager.js";
+import { ALL_MODES, MODE_LABELS } from "../permissions/manager.js";
 import { formatTodos, readTodos, todoFilePath } from "../tools/todo.js";
 import type { Command } from "./types.js";
 
@@ -97,15 +97,16 @@ export const builtinCommands: Command[] = [
   {
     name: "permissions",
     description: "show or set the permission mode",
-    // Built from MODE_CYCLE so this can't drift out of sync with the actual
-    // valid modes the way the config-loading validator once did.
-    argumentHint: `[${MODE_CYCLE.join("|")}]`,
+    // Built from ALL_MODES (not just the shift+tab cycle) so this can't drift
+    // out of sync with the actual valid modes the way the config-loading
+    // validator once did — includes "bypass", reachable only by typing it.
+    argumentHint: `[${ALL_MODES.join("|")}]`,
     source: "builtin",
     async run(ctx) {
       const requested = ctx.args.trim();
       if (requested === "") {
         const current = ctx.getPermissionMode();
-        const options = MODE_CYCLE.map(
+        const options = ALL_MODES.map(
           (mode) => `  ${mode.padEnd(14)}${MODE_LABELS[mode]}`,
         );
         return {
@@ -114,10 +115,10 @@ export const builtinCommands: Command[] = [
         };
       }
 
-      if (!MODE_CYCLE.includes(requested as never)) {
+      if (!ALL_MODES.includes(requested as never)) {
         return {
           kind: "error",
-          text: `Unknown mode "${requested}". Choose one of: ${MODE_CYCLE.join(", ")}.`,
+          text: `Unknown mode "${requested}". Choose one of: ${ALL_MODES.join(", ")}.`,
         };
       }
 

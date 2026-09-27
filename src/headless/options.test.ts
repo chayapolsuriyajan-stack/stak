@@ -183,8 +183,8 @@ describe("permission-mode validation", () => {
     resumePicker: false,
   };
 
-  test("accepts plan/build/auto", () => {
-    for (const permissionMode of ["plan", "build", "auto"] as const) {
+  test("accepts plan/build/auto/bypass", () => {
+    for (const permissionMode of ["plan", "build", "auto", "bypass"] as const) {
       const result = resolveInvocation(raw({ ...base, permissionMode }));
       expect(result).toMatchObject({ mode: "print", permissionMode });
     }

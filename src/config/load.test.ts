@@ -142,6 +142,18 @@ describe("guardrails", () => {
     expect(config.permissionMode).toBe(mode);
     expect(config.warnings).toEqual([]);
   });
+
+  // "bypass" is deliberately excluded from MODE_CYCLE (shift+tab never
+  // produces it), so the test.each above doesn't cover it -- but a value set
+  // once via /permissions bypass must still load correctly on relaunch.
+  test("permission mode bypass round-trips through project settings, despite not being in MODE_CYCLE", async () => {
+    await writeProjectSettings({ permissionMode: "bypass" });
+
+    const config = await loadConfig({ cwd });
+
+    expect(config.permissionMode).toBe("bypass");
+    expect(config.warnings).toEqual([]);
+  });
 });
 
 describe("autoCompact", () => {

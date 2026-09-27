@@ -7,8 +7,14 @@ import type { ProviderName } from "../providers/types.js";
  * but every edit and command is refused outright, with no prompt — the
  * model is expected to describe what it would do instead. Switching to any
  * other mode is how a proposed plan gets approved to actually run.
+ *
+ * "bypass" is the most permissive: like "auto", nothing prompts, but it also
+ * skips configured hooks — a hook meant as a safety net (e.g. blocking force
+ * pushes) will not fire. Deliberately excluded from the shift+tab cycle (see
+ * MODE_CYCLE in permissions/manager.ts) so it is never one accidental
+ * keypress away; reachable only by typing it explicitly.
  */
-export type PermissionMode = "plan" | "build" | "auto";
+export type PermissionMode = "plan" | "build" | "auto" | "bypass";
 
 /** Shape of ~/.stak/config.json — the only file allowed to hold secrets. */
 export interface GlobalConfig {

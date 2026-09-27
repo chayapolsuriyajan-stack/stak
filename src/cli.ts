@@ -18,7 +18,7 @@ import { connectMcpServers } from "./mcp/client.js";
 import { appendMemory } from "./memory/append.js";
 import { formatMemory } from "./memory/format.js";
 import { loadMemory } from "./memory/loader.js";
-import { MODE_CYCLE, PermissionManager } from "./permissions/manager.js";
+import { ALL_MODES, PermissionManager } from "./permissions/manager.js";
 import { createProvider } from "./providers/registry.js";
 import type { Provider } from "./providers/types.js";
 import { resolveCwd } from "./resolveCwd.js";
@@ -55,7 +55,7 @@ const program = new Command()
   .option("--output-format <format>", "output format for --print: text (default), json, or stream-json")
   .option(
     "--permission-mode <mode>",
-    `permission mode, --print only (default: the project's configured permission mode); one of ${MODE_CYCLE.join(", ")}`,
+    `permission mode, --print only (default: the project's configured permission mode); one of ${ALL_MODES.join(", ")}`,
   )
   .argument("[prompt...]", "prompt for --print mode")
   .parse();
@@ -87,10 +87,10 @@ try {
 
 if (
   options.permissionMode !== undefined &&
-  !MODE_CYCLE.includes(options.permissionMode as PermissionMode)
+  !ALL_MODES.includes(options.permissionMode as PermissionMode)
 ) {
   console.error(
-    `stak: invalid --permission-mode "${options.permissionMode}". Valid modes: ${MODE_CYCLE.join(", ")}.`,
+    `stak: invalid --permission-mode "${options.permissionMode}". Valid modes: ${ALL_MODES.join(", ")}.`,
   );
   process.exit(1);
 }

@@ -66,6 +66,46 @@ test("beforeTool veto blocks execution and reports the hook reason", async () =>
   expect(calls).toEqual([]);
 });
 
+test("bypass mode skips hooks entirely -- a beforeTool veto does not fire", async () => {
+  // Regression: "bypass" is meant as a true no-interception mode, not just
+  // "no prompt" -- a hook relied on as a safety net (blocking force pushes,
+  // say) must not silently fire in every mode except this one.
+  const hooks = hookStub(() => ({
+    blocked: true,
+    reasons: ['blocked by hook "guard": no writes'],
+    notices: [],
+  }));
+  const runSpy = hooks.run as ReturnType<typeof vi.fn>;
+  const calls: string[] = [];
+  const tools = new ToolRegistry({
+    cwd,
+    permissions: new PermissionManager("bypass", cwd),
+    hooks,
+    extra: [probeTool(calls)],
+  });
+
+  const result = await tools.execute({ name: "probe", input: {} });
+
+  expect(result.isError).toBe(false);
+  expect(calls).toEqual(["tool"]);
+  expect(runSpy).not.toHaveBeenCalled();
+});
+
+test("auto mode still runs hooks -- only bypass skips them", async () => {
+  const hooks = hookStub(() => ({ blocked: false, reasons: [], notices: [] }));
+  const runSpy = hooks.run as ReturnType<typeof vi.fn>;
+  const tools = new ToolRegistry({
+    cwd,
+    permissions: new PermissionManager("auto", cwd),
+    hooks,
+    extra: [],
+  });
+
+  await tools.execute({ name: "read", input: { path: "whatever.txt" } });
+
+  expect(runSpy).toHaveBeenCalledTimes(2);
+});
+
 test("approved calls run beforeTool, then the tool, then afterTool in order", async () => {
   const order: string[] = [];
   const hooks = hookStub((phase) => {

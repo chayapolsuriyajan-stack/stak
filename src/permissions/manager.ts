@@ -11,13 +11,23 @@ import type {
 } from "./types.js";
 
 // Strictest first: plan can't even be asked into running something, build
-// trusts edits but still asks for commands, auto trusts everything.
+// trusts edits but still asks for commands, auto trusts everything but still
+// runs configured hooks. shift+tab cycles only through these three —
+// "bypass" (below) is deliberately excluded so it's never one accidental
+// keypress away.
 export const MODE_CYCLE: PermissionMode[] = ["plan", "build", "auto"];
+
+/** Every valid permission mode, including "bypass". Used wherever a mode is
+ * entered explicitly by name — /permissions <mode>, --permission-mode, and
+ * config-file validation — as opposed to MODE_CYCLE, which is only the
+ * subset shift+tab walks through. */
+export const ALL_MODES: PermissionMode[] = [...MODE_CYCLE, "bypass"];
 
 export const MODE_LABELS: Record<PermissionMode, string> = {
   plan: "research freely — no edits or commands until you switch out",
   build: "edits run automatically, commands ask first",
   auto: "nothing asks",
+  bypass: "nothing asks, and hooks don't run either — no safety net at all",
 };
 
 export class PermissionManager {
@@ -78,6 +88,7 @@ export class PermissionManager {
     if (tier === "read-only") return false;
 
     switch (this.mode) {
+      case "bypass":
       case "auto":
         return false;
       case "build":
@@ -88,6 +99,13 @@ export class PermissionManager {
         // check() short-circuits plan mode before this is ever reached.
         return true;
     }
+  }
+
+  /** True only in "bypass" mode. Checked by ToolRegistry to skip hook
+   * commands entirely — bypass means no interception of any kind, not just
+   * no prompt, unlike "auto" where configured hooks still run. */
+  bypassesHooks(): boolean {
+    return this.mode === "bypass";
   }
 
   /** Mode is project-scoped state, so it lives with the project, not the user. */

@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { parseHooks } from "../hooks/config.js";
 import { mergeMcpServers, parseMcpServers } from "../mcp/config.js";
-import { MODE_CYCLE } from "../permissions/manager.js";
+import { ALL_MODES } from "../permissions/manager.js";
 import type { ProviderName } from "../providers/types.js";
 import { globalConfigFile, projectSettingsFile } from "./paths.js";
 import type {
@@ -161,10 +161,12 @@ function coerceMode(
     );
     return migrated;
   }
-  // Derived from MODE_CYCLE rather than a hand-written literal union, so a
+  // Derived from ALL_MODES rather than a hand-written literal union, so a
   // future mode added there can't silently fail to round-trip through
-  // persisted project settings.
-  if ((MODE_CYCLE as string[]).includes(value)) return value as PermissionMode;
+  // persisted project settings. Deliberately ALL_MODES, not MODE_CYCLE — a
+  // persisted "bypass" (set once via /permissions bypass) must still load
+  // correctly even though shift+tab never produces it.
+  if ((ALL_MODES as string[]).includes(value)) return value as PermissionMode;
   warnings.push(`Unknown permission mode "${value}", falling back to build.`);
   return "build";
 }
