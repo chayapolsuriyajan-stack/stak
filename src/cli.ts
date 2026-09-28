@@ -24,7 +24,13 @@ import { createProvider } from "./providers/registry.js";
 import type { Provider } from "./providers/types.js";
 import { resolveCwd } from "./resolveCwd.js";
 import type { SessionSummary } from "./sessions/resume.js";
-import { findLatestSession, findSessionById, listSessions, loadSession } from "./sessions/resume.js";
+import {
+  findLatestSession,
+  findSessionById,
+  listSessions,
+  loadSession,
+  SessionFormatError,
+} from "./sessions/resume.js";
 import { SessionStore } from "./sessions/store.js";
 import { loadSkills } from "./skills/loader.js";
 import { ToolRegistry } from "./tools/registry.js";
@@ -178,6 +184,19 @@ const tools = new ToolRegistry({
 // its session synchronously up front, same as before.
 const showPicker = options.resume === true;
 
+/** A session written by a newer stak can't be read; say so and stop, rather
+ * than crashing with a stack trace or silently starting a fresh session. */
+async function loadOrExit(file: string): Promise<Awaited<ReturnType<typeof loadSession>>> {
+  try {
+    return await loadSession(file);
+  } catch (error) {
+    if (!(error instanceof SessionFormatError)) throw error;
+    console.error(`stak: ${error.message}`);
+    await mcp.close();
+    process.exit(1);
+  }
+}
+
 let resumed: Awaited<ReturnType<typeof loadSession>>;
 if (typeof options.resume === "string") {
   const file = await findSessionById(options.resume, cwd);
@@ -185,10 +204,10 @@ if (typeof options.resume === "string") {
     console.error(`stak: no session "${options.resume}" in this directory.`);
     process.exit(1);
   }
-  resumed = await loadSession(file);
+  resumed = await loadOrExit(file);
 } else if (options.continue) {
   const file = await findLatestSession(cwd);
-  resumed = file ? await loadSession(file) : undefined;
+  resumed = file ? await loadOrExit(file) : undefined;
   if (!resumed) console.warn("stak: no previous session found in this directory.");
 }
 

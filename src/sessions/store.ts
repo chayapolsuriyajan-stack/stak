@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import type { Message } from "../agent/types.js";
 import { stripImagePayloads } from "../agent/images.js";
 import { sessionsDir } from "../config/paths.js";
-import type { SessionRecord } from "./types.js";
+import { SESSION_FORMAT_VERSION, type SessionRecord } from "./types.js";
 
 /**
  * Appends conversation records to a JSONL file as they happen. Writing on each
@@ -48,6 +48,7 @@ export class SessionStore {
           await fs.mkdir(path.dirname(this.filePath), { recursive: true });
           await this.write({
             type: "meta",
+            formatVersion: SESSION_FORMAT_VERSION,
             sessionId: this.sessionId,
             provider: this.meta.provider,
             model: this.meta.model,

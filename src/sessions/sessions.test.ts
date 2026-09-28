@@ -5,8 +5,15 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import type { Message } from "../agent/types.js";
 import { assistantText, userText } from "../agent/types.js";
 import { toDisplayMessages } from "../tui/history.js";
-import { findLatestSession, findSessionById, listSessions, loadSession } from "./resume.js";
+import {
+  findLatestSession,
+  findSessionById,
+  listSessions,
+  loadSession,
+  SessionFormatError,
+} from "./resume.js";
 import { SessionStore } from "./store.js";
+import { SESSION_FORMAT_VERSION } from "./types.js";
 
 let cwd: string;
 
@@ -62,6 +69,52 @@ describe("writing", () => {
     const metas = lines.filter((line) => JSON.parse(line).type === "meta");
 
     expect(metas).toHaveLength(1);
+  });
+});
+
+describe("session format version", () => {
+  async function writeRaw(records: object[]): Promise<string> {
+    const dir = path.join(cwd, ".stak", "sessions");
+    await fs.mkdir(dir, { recursive: true });
+    const file = path.join(dir, "fmt.jsonl");
+    await fs.writeFile(file, records.map((r) => JSON.stringify(r)).join("\n") + "\n");
+    return file;
+  }
+
+  const meta = { type: "meta", sessionId: "fmt", provider: "ollama", model: "m", cwd: "", startedAt: "2026-01-01T00:00:00Z" };
+  const msg = { type: "message", message: userText("hi"), ts: "2026-01-01T00:00:00Z" };
+
+  test("new sessions record the format version", async () => {
+    const session = store();
+    session.append(userText("hello"));
+    await session.flush();
+
+    const first = (await fs.readFile(session.filePath, "utf8")).split("\n")[0] ?? "{}";
+    expect(JSON.parse(first)).toMatchObject({ type: "meta", formatVersion: SESSION_FORMAT_VERSION });
+  });
+
+  test("a pre-1.0 session with no version marker still loads", async () => {
+    const file = await writeRaw([meta, msg]);
+
+    const loaded = await loadSession(file);
+
+    expect(loaded?.history).toHaveLength(1);
+  });
+
+  // Once 1.0 ships, this build will outlive its own session format: a file a
+  // future stak writes in a changed format must be refused plainly, not
+  // mis-read into a corrupted conversation.
+  test("a session from a newer format is refused, not mis-read", async () => {
+    const file = await writeRaw([{ ...meta, formatVersion: SESSION_FORMAT_VERSION + 1 }, msg]);
+
+    await expect(loadSession(file)).rejects.toBeInstanceOf(SessionFormatError);
+    await expect(loadSession(file)).rejects.toThrow(/newer version of stak/);
+  });
+
+  test("the picker doesn't offer a session it couldn't load", async () => {
+    await writeRaw([{ ...meta, formatVersion: SESSION_FORMAT_VERSION + 1 }, msg]);
+
+    expect(await listSessions(cwd)).toEqual([]);
   });
 });
 

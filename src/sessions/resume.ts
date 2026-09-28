@@ -2,7 +2,16 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Message } from "../agent/types.js";
 import { sessionsDir } from "../config/paths.js";
-import type { LoadedSession, SessionRecord } from "./types.js";
+import { SESSION_FORMAT_VERSION, type LoadedSession, type SessionRecord } from "./types.js";
+
+/** Thrown when a session file was written by a newer stak than this one. */
+export class SessionFormatError extends Error {}
+
+/** A session is readable when it has no version marker (pre-1.0 files are
+ * format 1) or one this build understands. */
+function isReadableFormat(record: { formatVersion?: number }): boolean {
+  return (record.formatVersion ?? 1) <= SESSION_FORMAT_VERSION;
+}
 
 export interface SessionSummary {
   sessionId: string;
@@ -113,6 +122,9 @@ async function summarizeSession(filePath: string): Promise<SessionSummary | unde
     }
 
     if (record.type === "meta") {
+      // A newer stak wrote this file; don't offer it in the picker, where
+      // choosing it could only fail.
+      if (!isReadableFormat(record)) return undefined;
       sessionId = record.sessionId;
       startedAt = record.startedAt;
       provider = record.provider;
@@ -179,6 +191,13 @@ export async function loadSession(filePath: string): Promise<LoadedSession | und
     }
 
     if (record.type === "meta") {
+      if (!isReadableFormat(record)) {
+        throw new SessionFormatError(
+          `Session "${record.sessionId}" was written by a newer version of stak ` +
+            `(session format ${record.formatVersion}; this build reads up to ` +
+            `${SESSION_FORMAT_VERSION}). Upgrade stak to resume it.`,
+        );
+      }
       sessionId = record.sessionId;
       provider = record.provider;
       model = record.model;
