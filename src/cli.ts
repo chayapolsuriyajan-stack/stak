@@ -19,6 +19,7 @@ import { appendMemory } from "./memory/append.js";
 import { formatMemory } from "./memory/format.js";
 import { loadMemory } from "./memory/loader.js";
 import { ALL_MODES, PermissionManager } from "./permissions/manager.js";
+import { checkModelAvailable } from "./providers/preflight.js";
 import { createProvider } from "./providers/registry.js";
 import type { Provider } from "./providers/types.js";
 import { resolveCwd } from "./resolveCwd.js";
@@ -196,6 +197,18 @@ const sessions = showPicker ? await listSessions(cwd) : [];
 const history: Message[] = resumed?.history ?? [];
 const model = resumed?.model ?? config.model;
 
+// Catch "the model isn't downloaded" / "Ollama isn't running" before the
+// first prompt, instead of letting it surface as a raw provider error. Fatal
+// for --print, where the turn could only fail; a warning in the TUI, where
+// the user can start Ollama or pull the model and simply try again.
+const preflight = await checkModelAvailable(provider, model, config.ollamaHost);
+if (preflight && invocation.mode === "print") {
+  console.error(`stak: ${preflight.message}`);
+  await mcp.close();
+  process.exit(1);
+}
+const preflightWarnings = preflight ? [preflight.message] : [];
+
 const sessionMeta = { provider: provider.name, model, cwd };
 let store = resumed
   ? SessionStore.resuming(sessionMeta, resumed)
@@ -240,6 +253,7 @@ for (const warning of [
   ...memory.warnings,
   ...commands.warnings,
   ...positionalWarnings,
+  ...preflightWarnings,
 ]) {
   console.warn(`stak: ${warning}`);
 }
