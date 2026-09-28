@@ -1,0 +1,61 @@
+name: Bug report
+description: Something in stak doesn't work as described
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problem? Please don't file it here — use the **Security** tab → **Report a vulnerability** instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, and what stak did in response. Paste error output as text rather than a screenshot.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: The smallest command, prompt, or config that shows the problem.
+      placeholder: |
+        1. stak -p "..."
+        2. ...
+  - type: input
+    id: version
+    attributes:
+      label: stak version
+      description: Output of `stak --version`
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      options:
+        - Ollama (local)
+        - Anthropic
+        - OpenAI
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      placeholder: e.g. llama3.2, claude-sonnet-4-5

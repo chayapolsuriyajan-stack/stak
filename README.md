@@ -507,3 +507,7 @@ npm run dev        # run from source
 npm test           # run the test suite
 npm run typecheck  # check types
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, and
+[SECURITY.md](SECURITY.md) to report a vulnerability privately. Changes
+between versions are in [CHANGELOG.md](CHANGELOG.md).
