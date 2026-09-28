@@ -1,5 +1,5 @@
 import { Box, Text, useInput } from "ink";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { SessionSummary } from "../../sessions/resume.js";
 import { ACCENT, MUTED } from "../theme.js";
 
@@ -12,14 +12,23 @@ export interface SessionPickerProps {
 
 export function SessionPicker({ sessions, onSelect, onCancel }: SessionPickerProps) {
   const [selected, setSelected] = useState(0);
+  // Ink's useInput re-subscribes the handler after every render, so a handler
+  // reading `selected` from its closure sees a stale value whenever Enter
+  // arrives before that re-subscribe — a fast down+enter (or both keys in one
+  // chunk) would resume the wrong session. The ref is always current.
+  const selectedRef = useRef(0);
+
+  const move = (delta: number) => {
+    const next = Math.min(sessions.length - 1, Math.max(0, selectedRef.current + delta));
+    selectedRef.current = next;
+    setSelected(next);
+  };
 
   useInput((char, key) => {
-    if (key.upArrow) setSelected((current) => Math.max(0, current - 1));
-    if (key.downArrow) {
-      setSelected((current) => Math.min(sessions.length - 1, current + 1));
-    }
+    if (key.upArrow) move(-1);
+    if (key.downArrow) move(1);
     if (key.return) {
-      const session = sessions[selected];
+      const session = sessions[selectedRef.current];
       if (session) onSelect(session);
     }
     if (key.escape) onCancel();
