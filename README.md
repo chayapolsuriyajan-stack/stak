@@ -7,15 +7,26 @@ same either way.
 ## Install
 
 ```bash
-npm install -g github:chayapolsuriyajan-stack/stak
+npm install -g https://github.com/chayapolsuriyajan-stack/stak/releases/latest/download/stak.tgz
 ```
 
-Requires Node 20+. This installs straight from GitHub — stak isn't published
-to the npm registry.
+Requires Node 20+. This installs the latest release's pre-built package
+straight from GitHub — stak isn't published to the npm registry. For a
+specific version, replace `latest/download` with `download/v1.0.0` (or any
+other release tag).
+
+npm 11 may print an `allow-scripts` notice about stak's `prepare` script.
+It's safe to ignore: the package ships pre-built, so there is nothing to run.
+
+Installing from the repository URL (`npm install -g github:...`) doesn't
+work: npm doesn't install the build tools when it builds a git dependency
+for a global install. Use the release package above.
 
 To work on stak itself instead:
 
 ```bash
+git clone https://github.com/chayapolsuriyajan-stack/stak.git
+cd stak
 npm install
 npm run build
 npm link

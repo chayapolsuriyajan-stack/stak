@@ -43,6 +43,20 @@ To try your build as the real `stak` command, run `npm link` in the repo.
 - Windows is a first-class platform. Don't assume POSIX paths, shells, or
   signals.
 
+## Releasing (maintainers)
+
+1. In `CHANGELOG.md`, turn the `Unreleased` entries into a new
+   `## [x.y.z] — YYYY-MM-DD` section.
+2. `npm version x.y.z --no-git-tag-version`, then commit both changes as
+   `Release x.y.z` and push. Wait for CI to pass.
+3. `git tag -a vx.y.z -m "stak x.y.z"` and `git push origin vx.y.z`.
+
+Pushing the tag runs the Release workflow. It checks that the tag matches
+`package.json`, runs the full verification, creates the GitHub release from
+that version's changelog section, and attaches the pre-built `stak.tgz`
+that the README's install command downloads. A release without that file
+would break installation for everyone, so don't create releases by hand.
+
 ## Compatibility
 
 stak follows semantic versioning from 1.0. The public surface is: CLI flags,

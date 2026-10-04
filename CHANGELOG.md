@@ -6,6 +6,18 @@ follows [semantic versioning](https://semver.org): the CLI flags, the keys in
 hook payload and `STAK_*` hook environment variables, and the session file
 format only change incompatibly in a new major version.
 
+## [Unreleased]
+
+### Fixed
+
+- **The documented install command didn't work.** `npm install -g
+  github:...` fails because npm doesn't install the build tools when it
+  builds a git dependency for a global install. Releases now carry a
+  pre-built `stak.tgz`, and the README installs from that instead:
+  `npm install -g https://github.com/chayapolsuriyajan-stack/stak/releases/latest/download/stak.tgz`.
+  The asset is attached to 1.0.0 as well, and attached automatically to
+  every future release.
+
 ## [1.0.0] — 2026-09-28
 
 ### Upgrading from 0.1.0

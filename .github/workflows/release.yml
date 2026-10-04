@@ -1,0 +1,74 @@
+name: Release
+
+# The README installs from releases/latest/download/stak.tgz, so every release
+# MUST carry that asset — a release without it breaks the documented install
+# for everyone. This attaches it automatically whenever a version tag is pushed.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Tag matches package.json version
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [ "$expected" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match package.json version ($expected)."
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      - name: Build the package
+        run: |
+          npm pack
+          mv "stak-${GITHUB_REF_NAME#v}.tgz" stak.tgz
+          tar -tzf stak.tgz
+
+      - name: Create the release if it doesn't exist yet
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists."
+            exit 0
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          # This version's section of CHANGELOG.md, without its own heading.
+          # Plain string matching (index), not a regex: "[1.0.0]" in a regex
+          # is a character class, and escaping it reliably across shells is
+          # exactly the kind of thing that silently produces empty notes.
+          awk -v v="$version" '
+            index($0, "## [" v "]") == 1 { found = 1; next }
+            found && index($0, "## [") == 1 { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "::error::CHANGELOG.md has no section for $version."
+            exit 1
+          fi
+          {
+            printf '**Install:** `npm install -g https://github.com/%s/releases/download/%s/stak.tgz`\n\n' \
+              "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME"
+            cat notes.md
+          } > release-notes.md
+          gh release create "$GITHUB_REF_NAME" --title "stak $version" --notes-file release-notes.md --verify-tag
+
+      - name: Attach stak.tgz
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" stak.tgz --clobber
