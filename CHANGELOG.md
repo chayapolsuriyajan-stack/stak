@@ -6,7 +6,7 @@ follows [semantic versioning](https://semver.org): the CLI flags, the keys in
 hook payload and `STAK_*` hook environment variables, and the session file
 format only change incompatibly in a new major version.
 
-## [Unreleased]
+## [1.0.1] — 2026-10-04
 
 ### Fixed
 
@@ -17,6 +17,8 @@ format only change incompatibly in a new major version.
   `npm install -g https://github.com/chayapolsuriyajan-stack/stak/releases/latest/download/stak.tgz`.
   The asset is attached to 1.0.0 as well, and attached automatically to
   every future release.
+- The README bundled inside the package now shows the working install
+  command (1.0.0's still showed the broken one).
 
 ## [1.0.0] — 2026-09-28
 
@@ -117,5 +119,6 @@ file and shell tools behind a permission gate; `plan` mode; project-confined
 file tools; slash commands and skills; session resume; live token and
 context stats; and a thinking view (`Ctrl+O`).
 
+[1.0.1]: https://github.com/chayapolsuriyajan-stack/stak/releases/tag/v1.0.1
 [1.0.0]: https://github.com/chayapolsuriyajan-stack/stak/releases/tag/v1.0.0
 [0.1.0]: https://github.com/chayapolsuriyajan-stack/stak/commit/a7918e9
